@@ -11,22 +11,21 @@
 
 - name: CPU使用率結果保存
   copy:
-    content: "{{ cpu_usage.stdout }}"
+    content: "{{ cpu_usage.stdout }}\n"
     dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/pre_cpu_usage.txt"
     mode: '0644'
 
 - name: 事前メモリ使用率確認
   ansible.builtin.shell: >
-    LANG=C; sar -r -f /var/log/sa/sa$(date '+%d') |
-    grep -vE "Linux|kbmemfree|^$" |
-    awk '{printf "%s %4.2f\n", $1, (($2 + $4 - $3) * 100) / ($2 + $4)}' |
-    cut -c -5,9-
+    LANG=C; sar -r 1 1 |
+    grep -vE "Linux|kbmemfree|^$|Average" |
+    awk '{print $1, $5}'
   register: mem_usage
   changed_when: false
 
 - name: 事前メモリ使用率結果保存
   ansible.builtin.copy:
-    content: "{{ mem_usage.stdout }}"
+    content: "{{ mem_usage.stdout }}\n"
     dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/mem_usage.txt"
     mode: '0644'
 
@@ -37,6 +36,6 @@
 
 - name: ディスク使用率結果保存
   copy:
-    content: "{{ disk_usage.stdout }}"
+    content: "{{ disk_usage.stdout }}\n"
     dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/pre_disk_usage.txt"
     mode: '0644'

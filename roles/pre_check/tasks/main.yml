@@ -5,3 +5,6 @@
 
 - name: 事前システム状態の確認
   ansible.builtin.include_tasks: check_system_status.yml
+
+- name: 事前PostgreSQLリンク確認
+  ansible.builtin.include_tasks: check_system_status.yml

@@ -28,7 +28,7 @@
 
     - name: /bin 配下の確認結果保存
       ansible.builtin.copy:
-        content: "{{ pg_link_bin.stdout }}"
+        content: "{{ pg_link_bin.stdout }}\n"
         dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/pg_link_bin_bf"
         mode: '0644'
       when: pg_link_bin.stdout != ""
@@ -45,7 +45,7 @@
 
     - name: /usr/bin 配下の確認結果保存
       ansible.builtin.copy:
-        content: "{{ pg_link_usr.stdout }}"
+        content: "{{ pg_link_usr.stdout }}\n"
         dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/pg_link_usr_bf"
         mode: '0644'
       when: pg_link_usr.stdout != ""

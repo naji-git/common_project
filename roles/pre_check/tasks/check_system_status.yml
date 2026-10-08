@@ -31,3 +31,22 @@
     content: "{{ unit_files.stdout }}\n"
     dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/unit-files_before"
     mode: '0644'
+
+- name: Javaディレクトリ存在確認
+  ansible.builtin.stat:
+    path: /usr/lib/jvm
+  register: jvm_dir
+
+- name: Java関連ファイル確認・保存ブロック
+  when: jvm_dir.stat.exists
+  block:
+    - name: Java関連ファイル確認
+      ansible.builtin.command: ls -l /usr/lib/jvm
+      register: java_info
+      changed_when: false
+
+    - name: Java関連ファイル結果保存
+      ansible.builtin.copy:
+        content: "{{ java_info.stdout }}\n"
+        dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/java_info.txt"
+        mode: '0644'

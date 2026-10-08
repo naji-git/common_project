@@ -5,7 +5,7 @@
 
 - name: プロセス状態確認結果保存
   copy:
-    content: "{{ process_status.stdout }}"
+    content: "{{ process_status.stdout }}\n"
     dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/process_status.txt"
     mode: '0644'
 
@@ -16,7 +16,7 @@
 
 - name: カーネルバージョン結果保存
   copy:
-    content: "{{ kernel_version.stdout }}"
+    content: "{{ kernel_version.stdout }}\n"
     dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/kernel_version.txt"
     mode: '0644'
 
@@ -28,6 +28,6 @@
 
 - name: サービス自動起動設定結果保存
   copy:
-    content: "{{ unit_files.stdout }}"
+    content: "{{ unit_files.stdout }}\n"
     dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/unit-files_before"
     mode: '0644'

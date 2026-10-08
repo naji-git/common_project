@@ -10,12 +10,6 @@
 - name: PostgreSQL 関連リンク事前確認ブロック
   when: check_psql.rc == 0
   block:
-    - name: 保存先ディレクトリ作成
-      ansible.builtin.file:
-        path: "/tmp/{{ inventory_hostname }}_patchinfo/bf"
-        state: directory
-        mode: '0755'
-
     # /bin 配下の確認
     - name: /bin 配下の PostgreSQL 関連リンク確認
       ansible.builtin.command: >

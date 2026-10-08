@@ -7,4 +7,4 @@
   ansible.builtin.include_tasks: check_system_status.yml
 
 - name: 事前PostgreSQLリンク確認
-  ansible.builtin.include_tasks: check_system_status.yml
+  ansible.builtin.include_tasks: check_postgresql_link.yml

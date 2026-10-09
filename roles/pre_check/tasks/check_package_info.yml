@@ -17,7 +17,7 @@
 - name: パッケージ管理設定ファイルの確認結果保存
   ansible.builtin.copy:
     content: "{{ pkg_conf_content.stdout }}\n"
-    dest: "{{ patch_evidence_dir }}/yum.conf_before.txt"
+    dest: "{{ patch_evidence_dir }}/yum.conf_before"
     mode: '0644'
 
 # --------------------------------------------------

@@ -10,7 +10,7 @@
 # --------------------------------------------------
 - name: 事前CPU使用率確認 (sar -u より現行使用率を計算)
   ansible.builtin.shell: >
-    sar -u 1 1 | awk '/Average:/ {printf "%.0f", 100 - $NF}'
+    LANG=C sar -u 1 1 | awk 'END {printf "%.0f", 100 - $NF}'
   register: current_cpu_usage
   changed_when: false
 

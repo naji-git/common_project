@@ -1,1 +1,75 @@
+---
+# --------------------------------------------------
+# 0. OSメジャーバージョンに応じた対象設定ファイルの決定
+# --------------------------------------------------
+- name: 設定ファイルパスの判定 (RHEL7: yum.conf / RHEL8,9: dnf.conf)
+  ansible.builtin.set_fact:
+    target_pkg_conf: "{{ '/etc/yum.conf' if ansible_facts['distribution_major_version'] == '7' else '/etc/dnf/dnf.conf' }}"
 
+# --------------------------------------------------
+# 1. yum.conf / dnf.conf 確認
+# --------------------------------------------------
+- name: パッケージ管理設定ファイルの内容確認
+  ansible.builtin.command: "cat {{ target_pkg_conf }}"
+  register: pkg_conf_content
+  changed_when: false
+
+- name: パッケージ管理設定ファイルの確認結果保存
+  ansible.builtin.copy:
+    content: "{{ pkg_conf_content.stdout }}\n"
+    dest: "{{ patch_evidence_dir }}/yum.conf_before.txt"
+    mode: '0644'
+
+# --------------------------------------------------
+# 2. yum.conf / dnf.conf 修正
+# ※ exclude が有効行になっている場合のみ実行
+# --------------------------------------------------
+- name: exclude 有効行の存在確認
+  ansible.builtin.lineinfile:
+    path: "{{ target_pkg_conf }}"
+    regexp: '^\s*exclude\s*=.*kernel.*'
+    state: absent
+  check_mode: true
+  register: check_exclude
+  changed_when: false
+
+- name: 設定ファイル修正ブロック (exclude有効時のみ実行)
+  when: check_exclude.found is defined and check_exclude.found > 0
+  block:
+    # 手順書の cp -ip に相当（日付付きバックアップ）
+    - name: 変更前ファイルのバックアップ取得
+      ansible.builtin.copy:
+        src: "{{ target_pkg_conf }}"
+        dest: "{{ target_pkg_conf }}_{{ ansible_date_time.date | replace('-', '') }}"
+        remote_src: true
+        mode: 'preserve'
+
+    # installonly_limit=3 を 2 に変更
+    - name: installonly_limit を 2 に変更
+      ansible.builtin.lineinfile:
+        path: "{{ target_pkg_conf }}"
+        regexp: '^(\s*installonly_limit\s*=).*'
+        line: 'installonly_limit=2'
+        backrefs: true
+
+    # exclude=kernel* redhat-release* の先頭に # を付与
+    - name: exclude 行をコメントアウト
+      ansible.builtin.replace:
+        path: "{{ target_pkg_conf }}"
+        regexp: '^(\s*exclude\s*=.*kernel.*redhat-release.*)'
+        replace: '#\1'
+
+# --------------------------------------------------
+# 3. パッケージ一覧取得 (rpm -qa | sort -n)
+# --------------------------------------------------
+- name: パッケージ一覧取得 (rpm -qa | sort -n)
+  ansible.builtin.shell: >
+    rpm -qa | sort -n
+  register: rpm_qa_result
+  changed_when: false
+
+- name: パッケージ一覧結果保存 (rpm_qa.bf)
+  ansible.builtin.copy:
+    content: "{{ rpm_qa_result.stdout }}\n"
+    dest: "{{ patch_evidence_dir }}/rpm_qa.bf"
+    mode: '0644'

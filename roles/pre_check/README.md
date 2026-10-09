@@ -22,12 +22,11 @@
 
 ## 必要な変数（`vars/main.yml`）
 
-1. 設定ファイルの保存先を指定:/home/infra/rhel_patch
-
-2.CPU、メモリ、ディスク使用率で使用する閾値については各システム専用プロジェクト側（`roles/rhel_pre_check/vars/main.yaml` 等）で定義してください。
-threshold_cpu_usage: xx
-threshold_mem_usage: xx
-threshold_disk_usage: xx
+1. **設定ファイルの保存先を指定:/home/infra/rhel_patch**
+2. **CPU、メモリ、ディスク使用率で使用する閾値については各システム専用プロジェクト側（`roles/rhel_pre_check/vars/main.yaml` 等）で定義してください**
+   -threshold_cpu_usage: xx
+   -threshold_mem_usage: xx
+   -threshold_disk_usage: xx
 
 ---
 

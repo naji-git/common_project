@@ -11,3 +11,6 @@
 
 - name: 事前httpd設定バックアップ
   ansible.builtin.include_tasks: backup_httpd_conf.yml
+
+- name: yum.conf修正と事前パッケージ情報の取得
+  ansible.builtin.include_tasks: check_package_info.yml

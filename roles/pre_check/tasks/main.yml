@@ -8,3 +8,6 @@
 
 - name: 事前PostgreSQLリンク確認
   ansible.builtin.include_tasks: check_postgresql_link.yml
+
+- name: 事前httpd設定バックアップ
+  ansible.builtin.include_tasks: backup_httpd_conf.yml

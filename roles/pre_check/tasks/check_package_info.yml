@@ -2,7 +2,7 @@
 # --------------------------------------------------
 # 0. OSメジャーバージョンに応じた対象設定ファイルの決定
 # --------------------------------------------------
-- name: 設定ファイルパスの判定 (RHEL7: yum.conf / RHEL8,9: dnf.conf)
+- name: "設定ファイルパスの判定 (RHEL7: yum.conf / RHEL8,9: dnf.conf)"
   ansible.builtin.set_fact:
     target_pkg_conf: "{{ '/etc/yum.conf' if ansible_facts['distribution_major_version'] == '7' else '/etc/dnf/dnf.conf' }}"
 

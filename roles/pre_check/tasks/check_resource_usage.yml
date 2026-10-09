@@ -86,6 +86,22 @@
 # --------------------------------------------------
 # 4. 全チェック完了後の総合判定（いずれかが超過していれば異常終了）
 # --------------------------------------------------
+- name: デバッグ: 全リソースの判定変数と型の確認
+  ansible.builtin.debug:
+    msg:
+      - "=== CPU ==="
+      - "取得値: '{{ current_cpu_usage | default('未定義') }}' (型: {{ current_cpu_usage | type_debug }})"
+      - "閾値  : '{{ threshold_cpu_usage | default('未定義') }}' (型: {{ threshold_cpu_usage | type_debug }})"
+      - "フラグ: {{ cpu_over_threshold | default('未定義') }}"
+      - "=== Memory ==="
+      - "取得値: '{{ current_mem_usage | default('未定義') }}' (型: {{ current_mem_usage | type_debug }})"
+      - "閾値  : '{{ threshold_mem_usage | default('未定義') }}' (型: {{ threshold_mem_usage | type_debug }})"
+      - "フラグ: {{ mem_over_threshold | default('未定義') }}"
+      - "=== Disk ==="
+      - "取得値: '{{ current_disk_usage | default('未定義') }}' (型: {{ current_disk_usage | type_debug }})"
+      - "閾値  : '{{ threshold_disk_usage | default('未定義') }}' (型: {{ threshold_disk_usage | type_debug }})"
+      - "フラグ: {{ disk_over_threshold | default('未定義') }}"
+
 - name: リソース閾値チェック総合判定
   ansible.builtin.fail:
     msg: >-

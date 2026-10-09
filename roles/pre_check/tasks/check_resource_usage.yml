@@ -1,21 +1,45 @@
+---
 - name: 事前情報取得用ディレクトリ作成
-  file:
-    path: "/home/infra/rhel_patch/"
+  ansible.builtin.file:
+    path: "{{ patch_evidence_dir }}"
     state: directory
     mode: '0755'
 
-- name: 事前CPU使用率確認
-  command: sar -u
+# --------------------------------------------------
+# 1. CPU使用率確認 & 閾値チェック
+# --------------------------------------------------
+- name: 事前CPU使用率確認 (sar -u より現行使用率を計算)
+  ansible.builtin.shell: >
+    sar -u 1 1 | awk '/Average:/ {printf "%.0f", 100 - $NF}'
+  register: current_cpu_usage
+  changed_when: false
+
+- name: 事前CPU全体ログ取得 (sar -u)
+  ansible.builtin.command: sar -u
   register: cpu_usage
   changed_when: false
 
 - name: CPU使用率結果保存
-  copy:
+  ansible.builtin.copy:
     content: "{{ cpu_usage.stdout }}\n"
     dest: "{{ patch_evidence_dir }}/cpu_usage_before"
     mode: '0644'
 
-- name: 事前メモリ使用率確認
+- name: CPU閾値判定フラグ設定
+  ansible.builtin.set_fact:
+    cpu_over_threshold: "{{ (current_cpu_usage.stdout | int) > (threshold_cpu_usage | default(80) | int) }}"
+    cpu_msg: "CPU使用率: {{ current_cpu_usage.stdout }}% (閾値: {{ threshold_cpu_usage | default(80) }}%)"
+
+# --------------------------------------------------
+# 2. メモリ使用率確認 & 閾値チェック
+# --------------------------------------------------
+- name: 事前メモリ使用率確認 (sar -r %memused取得)
+  ansible.builtin.shell: >
+    LANG=C sar -r 1 1 | awk '/Average:/ {printf "%.0f", $4}'
+  register: current_mem_usage
+  changed_when: false
+
+- name: メモリ使用ログ整形取得
   ansible.builtin.shell: >
     LANG=C; sar -r 1 1 |
     grep -vE "Linux|kbmemfree|^$|Average" |
@@ -29,13 +53,46 @@
     dest: "{{ patch_evidence_dir }}/mem_usage_before"
     mode: '0644'
 
-- name: 事前ディスク使用率確認
-  command: df -h
+- name: メモリ閾値判定フラグ設定
+  ansible.builtin.set_fact:
+    mem_over_threshold: "{{ (current_mem_usage.stdout | int) > (threshold_mem_usage | default(80) | int) }}"
+    mem_msg: "メモリ使用率: {{ current_mem_usage.stdout }}% (閾値: {{ threshold_mem_usage | default(80) }}%)"
+
+# --------------------------------------------------
+# 3. ディスク使用率確認 & 閾値チェック (/ 使用率)
+# --------------------------------------------------
+- name: 事前ディスク使用率確認 (/ の使用率%取得)
+  ansible.builtin.shell: >
+    df -h / | awk 'NR==2 {gsub("%",""); print $5}'
+  register: current_root_disk_usage
+  changed_when: false
+
+- name: 事前ディスク使用率確認 (df -h 全体)
+  ansible.builtin.command: df -h
   register: disk_usage
   changed_when: false
 
 - name: ディスク使用率結果保存
-  copy:
+  ansible.builtin.copy:
     content: "{{ disk_usage.stdout }}\n"
     dest: "{{ patch_evidence_dir }}/disk_usage_before"
     mode: '0644'
+
+- name: ディスク閾値判定フラグ設定
+  ansible.builtin.set_fact:
+    disk_over_threshold: "{{ (current_root_disk_usage.stdout | int) > (threshold_disk_usage | default(80) | int) }}"
+    disk_msg: "ルートディスク使用率: {{ current_root_disk_usage.stdout }}% (閾値: {{ threshold_disk_usage | default(80) }}%)"
+
+# --------------------------------------------------
+# 4. 全チェック完了後の総合判定（いずれかが超過していれば異常終了）
+# --------------------------------------------------
+- name: リソース閾値チェック総合判定
+  ansible.builtin.fail:
+    msg: >-
+      【リソース閾値超過エラー】以下の項目で閾値を超過しています。
+      {{ [
+           cpu_msg if cpu_over_threshold else '',
+           mem_msg if mem_over_threshold else '',
+           disk_msg if disk_over_threshold else ''
+         ] | select('ne', '') | list | join(' / ') }}
+  when: cpu_over_threshold or mem_over_threshold or disk_over_threshold

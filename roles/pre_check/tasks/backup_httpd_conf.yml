@@ -1,1 +1,63 @@
+---
+# 1. httpd.conf の存在確認（存在しない場合は作業不要の判定）
+- name: httpd.conf 存在確認
+  ansible.builtin.stat:
+    path: /etc/httpd/conf/httpd.conf
+  register: httpd_conf_stat
+
+# 2. httpd.conf が存在する場合のみ後続の取得・退避処理を実行
+- name: httpd設定情報取得および退避ブロック
+  when: httpd_conf_stat.stat.exists
+  block:
+    # 退避先ディレクトリ作成
+    - name: 退避先ディレクトリ作成 
+      ansible.builtin.file:
+        path: /home/infra/rhel_patch
+        state: directory
+        mode: '0755'
+
+    # --- 1. /etc/httpd/conf.modules.d 配下情報取得 ---
+    - name: conf.modules.d 配下のファイル一覧取得
+      ansible.builtin.shell: >
+        ls -1 /etc/httpd/conf.modules.d
+      register: conf_modules_list
+      changed_when: false
+
+    - name: conf.modules.d 配下の情報保存
+      ansible.builtin.copy:
+        content: "{{ conf_modules_list.stdout }}\n"
+        dest: /home/infra/rhel_patch/conf.modules.d.org
+        mode: '0644'
+
+    # --- 2. /etc/httpd/conf.d 配下情報取得 ---
+    - name: conf.d 配下のファイル一覧取得
+      ansible.builtin.shell: >
+        ls -1 /etc/httpd/conf.d
+      register: conf_d_list
+      changed_when: false
+
+    - name: conf.d 配下の情報保存
+      ansible.builtin.copy:
+        content: "{{ conf_d_list.stdout }}\n"
+        dest: /home/infra/rhel_patch/conf.d.org
+        mode: '0644'
+
+    # --- 3. httpd.service 退避 ---
+    - name: httpd.service の存在確認
+      ansible.builtin.stat:
+        path: /usr/lib/systemd/system/httpd.service
+      register: httpd_service_stat
+
+    - name: httpd.service 退避 (コピー)
+      ansible.builtin.copy:
+        src: /usr/lib/systemd/system/httpd.service
+        dest: /home/infra/rhel_patch/httpd.service.org
+        remote_src: true
+        mode: 'preserve'
+      when: httpd_service_stat.stat.exists
+
+- name: httpd未導入時のスキップログ表示
+  ansible.builtin.debug:
+    msg: "/etc/httpd/conf/httpd.conf が存在しないため、httpd関連の退避・取得処理をスキップしました。"
+  when: not httpd_conf_stat.stat.exists
 

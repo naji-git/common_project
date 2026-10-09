@@ -12,7 +12,7 @@
 - name: CPU使用率結果保存
   copy:
     content: "{{ cpu_usage.stdout }}\n"
-    dest: "{{ patch_evidence_dir }}/pre_cpu_usage_before"
+    dest: "{{ patch_evidence_dir }}/cpu_usage_before"
     mode: '0644'
 
 - name: 事前メモリ使用率確認
@@ -37,5 +37,5 @@
 - name: ディスク使用率結果保存
   copy:
     content: "{{ disk_usage.stdout }}\n"
-    dest: "{{ patch_evidence_dir }}/pre_disk_usage_before"
+    dest: "{{ patch_evidence_dir }}/disk_usage_before"
     mode: '0644'

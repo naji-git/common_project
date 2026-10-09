@@ -35,7 +35,7 @@
 # --------------------------------------------------
 - name: 事前メモリ使用率確認 (sar -r %memused取得)
   ansible.builtin.shell: >
-    LANG=C sar -r 1 1 | awk '/Average:/ {printf "%.0f", $4}'
+    LANG=C sar -r 1 1 | awk '/Average:/ {printf "%.0f", $5}'
   register: current_mem_usage
   changed_when: false
 

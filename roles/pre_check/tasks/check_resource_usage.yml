@@ -86,19 +86,19 @@
 # --------------------------------------------------
 # 4. 全チェック完了後の総合判定（いずれかが超過していれば異常終了）
 # --------------------------------------------------
-- name: "デバッグ: 全リソースの判定変数と型の確認"
+- name: "リソース判定"
   ansible.builtin.debug:
     msg:
       - "=== CPU ==="
-      - "取得値: '{{ current_cpu_usage.stdout | trim }}'"
+      - "使用率: '{{ current_cpu_usage.stdout | trim }}'"
       - "閾値  : '{{ threshold_cpu_usage }}'"
       - "フラグ: {{ cpu_over_threshold }}"
       - "=== Memory ==="
-      - "取得値: '{{ current_mem_usage.stdout | trim }}'"
+      - "使用率: '{{ current_mem_usage.stdout | trim }}'"
       - "閾値  : '{{ threshold_mem_usage }}'"
       - "フラグ: {{ mem_over_threshold }}"
-      - "=== Disk ==="
-      - "取得値: '{{ current_disk_usage.stdout | trim }}'"
+      - "=== Disk(/の使用率) ==="
+      - "使用率: '{{ current_disk_usage.stdout | trim }}'"
       - "閾値  : '{{ threshold_disk_usage }}'"
       - "フラグ: {{ disk_over_threshold }}"
 

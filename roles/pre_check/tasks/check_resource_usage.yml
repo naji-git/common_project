@@ -64,7 +64,7 @@
 - name: 事前ディスク使用率確認 (/ の使用率%取得)
   ansible.builtin.shell: >
     df -h / | awk 'NR==2 {gsub("%",""); print $5}'
-  register: current_root_disk_usage
+  register: current_disk_usage
   changed_when: false
 
 - name: 事前ディスク使用率確認 (df -h 全体)

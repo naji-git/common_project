@@ -1,6 +1,6 @@
 - name: 事前情報取得用ディレクトリ作成
   file:
-    path: "/tmp/{{ inventory_hostname }}_patchinfo/bf"
+    path: "/home/infra/rhel_patch/"
     state: directory
     mode: '0755'
 
@@ -12,7 +12,7 @@
 - name: CPU使用率結果保存
   copy:
     content: "{{ cpu_usage.stdout }}\n"
-    dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/pre_cpu_usage.txt"
+    dest: "{{ patch_evidence_dir }}/pre_cpu_usage_before"
     mode: '0644'
 
 - name: 事前メモリ使用率確認
@@ -26,7 +26,7 @@
 - name: 事前メモリ使用率結果保存
   ansible.builtin.copy:
     content: "{{ mem_usage.stdout }}\n"
-    dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/mem_usage.txt"
+    dest: "{{ patch_evidence_dir }}/mem_usage_before"
     mode: '0644'
 
 - name: 事前ディスク使用率確認
@@ -37,5 +37,5 @@
 - name: ディスク使用率結果保存
   copy:
     content: "{{ disk_usage.stdout }}\n"
-    dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/pre_disk_usage.txt"
+    dest: "{{ patch_evidence_dir }}/pre_disk_usage_before"
     mode: '0644'

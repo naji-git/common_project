@@ -6,7 +6,7 @@
 - name: プロセス状態確認結果保存
   copy:
     content: "{{ process_status.stdout }}\n"
-    dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/process_status.txt"
+    dest: "{{ patch_evidence_dir }}/process_status_before"
     mode: '0644'
 
 - name: カーネルバージョン確認
@@ -17,7 +17,7 @@
 - name: カーネルバージョン結果保存
   copy:
     content: "{{ kernel_version.stdout }}\n"
-    dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/kernel_version.txt"
+    dest: "{{ patch_evidence_dir }}/kernel_version_before"
     mode: '0644'
 
 - name: サービス自動起動設定確認
@@ -29,7 +29,7 @@
 - name: サービス自動起動設定結果保存
   copy:
     content: "{{ unit_files.stdout }}\n"
-    dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/unit-files_before"
+    dest: "{{ patch_evidence_dir }}/unit-files_before"
     mode: '0644'
 
 - name: Javaディレクトリ存在確認
@@ -48,5 +48,5 @@
     - name: Java関連ファイル結果保存
       ansible.builtin.copy:
         content: "{{ java_info.stdout }}\n"
-        dest: "/tmp/{{ inventory_hostname }}_patchinfo/bf/java_info.txt"
+        dest: "{{ patch_evidence_dir }}/java_info_before"
         mode: '0644'

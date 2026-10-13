@@ -1,4 +1,4 @@
-# pre_check role
+# rhel_pre_check role
 
 パッチ適用やメンテナンス作業の実施前に、対象サーバーの状態確認・エビデンス取得・設定バックアップを一括して行う共通ロールです。
 
@@ -23,7 +23,7 @@
 ## 必要な変数（`vars/main.yml`）
 
 1. **設定ファイルの保存先を指定:/home/infra/rhel_patch**
-2. **CPU、メモリ、ディスク使用率で使用する閾値については各システム専用プロジェクト側（`roles/rhel_pre_check/vars/main.yaml` 等）で定義してください**
+2. **CPU、メモリ、ディスク使用率で使用する閾値については各システム専用プロジェクト側（`roles/rhel_rhel_pre_check/vars/main.yaml` 等）で定義してください**
    - threshold_cpu_usage: xx   
    - threshold_mem_usage: xx   
    - threshold_disk_usage: xx   
@@ -37,4 +37,4 @@ Playbook または呼び出し元roleから include して実行します。
 ```yaml
 - name: 事前確認処理の実行
   ansible.builtin.include_role:
-    name: pre_check
+    name: rhel_pre_check

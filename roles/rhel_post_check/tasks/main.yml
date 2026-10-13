@@ -3,3 +3,5 @@
 - name: 事前リソース使用状況の確認
   ansible.builtin.include_tasks: check_resource_usage.yml
 
+- name: 事前リソース使用状況の確認
+  ansible.builtin.include_tasks: check_system_status.yml

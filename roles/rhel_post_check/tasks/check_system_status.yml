@@ -50,3 +50,61 @@
         content: "{{ java_info.stdout }}\n"
         dest: "{{ patch_evidence_dir }}/java_info_after"
         mode: '0644'
+
+# ==================================================
+# 作業前後での比較処理
+# ==================================================
+
+# --------------------------------------------------
+# 1. Java 情報の比較・表示
+# --------------------------------------------------
+- name: 事前Java情報の読み込み確認
+  ansible.builtin.stat:
+    path: "{{ patch_evidence_dir }}/java_info_before"
+  register: java_before_stat
+
+- name: 事前Java情報の取得
+  ansible.builtin.slurp:
+    src: "{{ patch_evidence_dir }}/java_info_before"
+  register: java_info_before_b64
+  when: java_before_stat.stat.exists
+
+- name: Java バージョン比較結果表示
+  ansible.builtin.debug:
+    msg:
+      - "=== Java 状態確認 ==="
+      - "作業前:"
+      - "{{ (java_info_before_b64.content | b64decode | trim).split('\n') if java_before_stat.stat.exists else ['(事前ファイルなし)'] }}"
+      - "作業後:"
+      - "{{ (java_info.stdout | trim).split('\n') if (java_info is defined and java_info.stdout is defined) else ['(Java未インストールまたは未取得)'] }}"
+
+# --------------------------------------------------
+# 2. カーネルバージョンの比較・表示
+# --------------------------------------------------
+- name: 事前カーネルバージョンの読み込み
+  ansible.builtin.slurp:
+    src: "{{ patch_evidence_dir }}/kernel_version_before"
+  register: kernel_before_b64
+  ignore_errors: true
+
+- name: カーネルバージョン比較結果表示
+  ansible.builtin.debug:
+    msg:
+      - "=== Kernel Version 比較 ==="
+      - "作業前: {{ (kernel_before_b64.content | b64decode | trim) if (kernel_before_b64 is succeeded) else '取得失敗またはファイルなし' }}"
+      - "作業後: {{ kernel_version.stdout | trim }}"
+      - "変更有無: {{ '変更あり (アップデート・再起動検知)' if (kernel_before_b64 is succeeded and (kernel_before_b64.content | b64decode | trim) != (kernel_version.stdout | trim)) else '変更なし' }}"
+
+# --------------------------------------------------
+# 3. サービス自動起動設定（unit-files）の差分抽出・表示
+# --------------------------------------------------
+- name: サービス自動起動設定の差分確認 (diff -u)
+  ansible.builtin.command: >
+    diff -u {{ patch_evidence_dir }}/unit-files_before {{ patch_evidence_dir }}/unit-files_after
+  register: unit_files_diff
+  failed_when: false
+  changed_when: false
+
+- name: サービス自動起動設定 差分結果表示
+  ansible.builtin.debug:
+    msg: "{{ unit_files_diff.stdout_lines if unit_files_diff.rc != 0 else ['差分なし（作業前後で自動起動設定に変更はありません）'] }}"

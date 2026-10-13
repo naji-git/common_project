@@ -107,11 +107,11 @@
 # --------------------------------------------------
 # 3. サービス自動起動設定（unit-files）の差分抽出・表示
 # --------------------------------------------------
-- name: サービス自動起動設定の差分確認 (diff -u)
-  ansible.builtin.command: >
-    diff -u {{ patch_evidence_dir }}/unit-files_before {{ patch_evidence_dir }}/unit-files_after
+- name: サービス自動起動設定の差分確認
+  ansible.builtin.shell: >
+    diff -u {{ patch_evidence_dir }}/unit-files_before {{ patch_evidence_dir }}/unit-files_after |
+    grep -E '^[+-][^+-]' || true
   register: unit_files_diff
-  failed_when: false
   changed_when: false
 
 - name: サービス自動起動設定 差分結果表示

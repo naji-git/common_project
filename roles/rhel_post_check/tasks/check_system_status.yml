@@ -120,11 +120,15 @@
         try:
             with open(filepath, 'r') as f:
                 for line in f:
-                    parts = line.strip().split()
-                    # ユニット名と状態の2列以上がある行のみ（フッター行や空行を除外）
-                    if len(parts) >= 2 and not line.endswith('unit files listed.'):
+                    line_str = line.strip()
+                    # フッター（"xxx unit files listed."）や空行、ヘッダー行を除外
+                    if not line_str or 'unit files listed' in line_str or line_str.startswith('UNIT FILE'):
+                        continue
+
+                    parts = line_str.split()
+                    # ユニット名と状態（最低2列以上）があり、ユニット名が英数字等で終わるものを対象
+                    if len(parts) >= 2 and '.' in parts[0]:
                         unit_name = parts[0]
-                        # unit名以外の設定状態（STATE, VENDOR PRESETなど）をまとめる
                         status = " ".join(parts[1:])
                         data[unit_name] = status
         except Exception:

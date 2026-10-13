@@ -58,30 +58,26 @@
 # --------------------------------------------------
 # 1. Java 情報の比較・表示
 # --------------------------------------------------
-- name: 事前Java情報の読み込み確認
-  ansible.builtin.stat:
-    path: "{{ patch_evidence_dir }}/java_info_before"
-  register: java_before_stat
+- name: 事前Javaファイルからバージョン文字列を抽出
+  ansible.builtin.shell: >
+    grep -E 'java-[0-9].*el[0-9]' {{ patch_evidence_dir }}/java_info_before 2>/dev/null |
+    awk '{print $NF}' | head -n 1
+  register: java_ver_before_cmd
+  failed_when: false
+  changed_when: false
 
-- name: 事前Java情報の取得
-  ansible.builtin.slurp:
-    src: "{{ patch_evidence_dir }}/java_info_before"
-  register: java_info_before_b64
-  when: java_before_stat.stat.exists
+- name: 事後Javaファイルからバージョン文字列を抽出
+  ansible.builtin.shell: >
+    grep -E 'java-[0-9].*el[0-9]' {{ patch_evidence_dir }}/java_info_after 2>/dev/null |
+    awk '{print $NF}' | head -n 1
+  register: java_ver_after_cmd
+  failed_when: false
+  changed_when: false
 
-- name: 作業前後のJavaバージョン文字列を抽出
+- name: 変数へ格納
   ansible.builtin.set_fact:
-    # ls -l の結果から 'java-数字' で始まる実体パッケージディレクトリ名を抽出
-    java_ver_before: >-
-      {{ (java_info_before_b64.content | b64decode).split('\n')
-         | select('match', '.*java-[0-9].*openjdk-[0-9].*')
-         | map('regex_replace', '^.*\\s(java-.*)$', '\\1')
-         | list | first | default('事前ファイルなし または 未特定') }}
-    java_ver_after: >-
-      {{ (java_info.stdout | default('')).split('\n')
-         | select('match', '.*java-[0-9].*openjdk-[0-9].*')
-         | map('regex_replace', '^.*\\s(java-.*)$', '\\1')
-         | list | default(['Java未検出']) | first }}
+    java_ver_before: "{{ (java_ver_before_cmd.stdout | trim) if (java_ver_before_cmd.stdout | trim | length > 0) else '事前ファイルなし または 未特定' }}"
+    java_ver_after: "{{ (java_ver_after_cmd.stdout | trim) if (java_ver_after_cmd.stdout | trim | length > 0) else 'Java未検出' }}"
 
 - name: Java バージョン比較結果表示
   ansible.builtin.debug:
@@ -120,4 +116,4 @@
 
 - name: サービス自動起動設定 差分結果表示
   ansible.builtin.debug:
-    msg: "{{ unit_files_diff.stdout_lines if unit_files_diff.rc != 0 else ['差分なし（作業前後で自動起動設定に変更はありません）'] }}"
+    msg: "{{ unit_files_diff.stdout_lines if (unit_files_diff.stdout | trim | length > 0) else ['差分なし（作業前後で自動起動設定に変更はありません）'] }}"

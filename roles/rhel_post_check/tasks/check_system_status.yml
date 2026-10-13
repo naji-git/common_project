@@ -69,14 +69,27 @@
   register: java_info_before_b64
   when: java_before_stat.stat.exists
 
+- name: 作業前後のJavaバージョン文字列を抽出・設定
+  ansible.builtin.set_fact:
+    # ls -l の出力結果から 'java-' で始まる実ディレクトリ名（バージョン）行を抽出
+    java_ver_before: >-
+      {{ (java_info_before_b64.content | b64decode).split('\n')
+         | select('match', '.*java-[0-9].*openjdk-[0-9].*')
+         | map('regex_replace', '^.*\\s(java-.*)$', '\\1')
+         | list | first | default('バージョン特定不可 / 事前ファイルなし') }}
+    java_ver_after: >-
+      {{ (java_info.stdout | default('')).split('\n')
+         | select('match', '.*java-[0-9].*openjdk-[0-9].*')
+         | map('regex_replace', '^.*\\s(java-.*)$', '\\1')
+         | list | default(['Java未検出']) | first }}
+
 - name: Java バージョン比較結果表示
   ansible.builtin.debug:
     msg:
-      - "=== Java 状態確認 ==="
-      - "作業前:"
-      - "{{ (java_info_before_b64.content | b64decode | trim).split('\n') if java_before_stat.stat.exists else ['(事前ファイルなし)'] }}"
-      - "作業後:"
-      - "{{ (java_info.stdout | trim).split('\n') if (java_info is defined and java_info.stdout is defined) else ['(Java未インストールまたは未取得)'] }}"
+      - "=== Java バージョン比較 ==="
+      - "作業前: {{ java_ver_before }}"
+      - "作業後: {{ java_ver_after }}"
+      - "変更有無: {{ 'バージョンアップ検知' if (java_ver_before != java_ver_after and java_ver_before != 'バージョン特定不可 / 事前ファイルなし') else '変更なし' }}"
 
 # --------------------------------------------------
 # 2. カーネルバージョンの比較・表示

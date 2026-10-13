@@ -1,0 +1,16 @@
+---
+# roles/rhel_post_check/tasks/main.yml
+- name: 事前リソース使用状況の確認
+  ansible.builtin.include_tasks: check_resource_usage.yml
+
+- name: 事前システム状態の確認
+  ansible.builtin.include_tasks: check_system_status.yml
+
+- name: 事前PostgreSQLリンク確認
+  ansible.builtin.include_tasks: check_postgresql_link.yml
+
+- name: 事前httpd設定バックアップ
+  ansible.builtin.include_tasks: backup_httpd_conf.yml
+
+- name: yum.conf修正と事前パッケージ情報の取得
+  ansible.builtin.include_tasks: check_package_info.yml

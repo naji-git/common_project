@@ -107,13 +107,66 @@
 # --------------------------------------------------
 # 3. サービス自動起動設定（unit-files）の差分抽出・表示
 # --------------------------------------------------
-- name: サービス自動起動設定の差分確認
-  ansible.builtin.shell: >
-    diff -u {{ patch_evidence_dir }}/unit-files_before {{ patch_evidence_dir }}/unit-files_after |
-    grep -E '^[+-][^+-]' || true
+- name: サービス自動起動設定の差分解析
+  ansible.builtin.shell: |
+    python3 - << 'EOF'
+    import sys
+
+    before_file = "{{ patch_evidence_dir }}/unit-files_before"
+    after_file = "{{ patch_evidence_dir }}/unit-files_after"
+
+    def parse_file(filepath):
+        data = {}
+        try:
+            with open(filepath, 'r') as f:
+                for line in f:
+                    parts = line.strip().split()
+                    # ユニット名と状態の2列以上がある行のみ（フッター行や空行を除外）
+                    if len(parts) >= 2 and not line.endswith('unit files listed.'):
+                        unit_name = parts[0]
+                        # unit名以外の設定状態（STATE, VENDOR PRESETなど）をまとめる
+                        status = " ".join(parts[1:])
+                        data[unit_name] = status
+        except Exception:
+            pass
+        return data
+
+    before = parse_file(before_file)
+    after = parse_file(after_file)
+
+    changes = []
+    added = []
+    removed = []
+
+    # 変更および削除の検出
+    for unit, b_stat in before.items():
+        if unit in after:
+            if b_stat != after[unit]:
+                changes.append(f"【設定変更】 {unit}: [作業前] {b_stat}  -->  [作業後] {after[unit]}")
+        else:
+            removed.append(f"【削除】 {unit} (作業前の状態: {b_stat})")
+
+    # 新規追加の検出
+    for unit, a_stat in after.items():
+        if unit not in before:
+            added.append(f"【新規追加】 {unit}: [状態] {a_stat}")
+
+    results = []
+    if changes:
+        results.extend(changes)
+    if added:
+        results.extend(added)
+    if removed:
+        results.extend(removed)
+
+    if results:
+        print("\n".join(results))
+    else:
+        print("差分なし")
+    EOF
   register: unit_files_diff
   changed_when: false
 
 - name: サービス自動起動設定 差分結果表示
   ansible.builtin.debug:
-    msg: "{{ unit_files_diff.stdout_lines if (unit_files_diff.stdout | trim | length > 0) else ['差分なし（作業前後で自動起動設定に変更はありません）'] }}"
+    msg: "{{ unit_files_diff.stdout_lines }}"

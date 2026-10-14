@@ -14,13 +14,15 @@
 # --------------------------------------------------
 - name: プロセス異常行の抽出と判定フラグ設定
   ansible.builtin.set_fact:
-    # 出力行の中から [: [^N]] の形式（[N] 以外）を含む行を抽出
+    # 正常判定 [N] 以外の行を抽出（[: [^N]] の形式）
     abnormal_procs: >-
       {{ process_status.stdout_lines
-         | select('regex', ':\s*\[[^N]\]')
+         | select('regex', ':\\s*\\[[^N]\\]')
          | list }}
-    # 異常行が存在するかどうかの真偽値フラグ
-    proc_has_abnormal: "{{ (process_status.stdout_lines | select('regex', ':\s*\[[^N]\]') | list | length) > 0 }}"
+
+- name: プロセス異常有無フラグの設定
+  ansible.builtin.set_fact:
+    proc_has_abnormal: "{{ (abnormal_procs | length) > 0 }}"
 
 - name: プロセス判定結果確認
   ansible.builtin.debug:

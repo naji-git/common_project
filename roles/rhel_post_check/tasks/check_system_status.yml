@@ -1,13 +1,50 @@
 - name: プロセス状態確認
-  command: /usr/local/sam/kanshi/shell/sk_proc_dsp.sh
+  ansible.builtin.command: /usr/local/sam/kanshi/shell/sk_proc_dsp.sh
   register: process_status
   changed_when: false
 
 - name: プロセス状態確認結果保存
-  copy:
+  ansible.builtin.copy:
     content: "{{ process_status.stdout }}\n"
-    dest: "{{ patch_evidence_dir }}/process_status_after"
+    dest: "{{ patch_evidence_dir }}/process_status_before"
     mode: '0644'
+
+# --------------------------------------------------
+# プロセス状態 判定処理
+# --------------------------------------------------
+- name: 監視対象プロセス全件行の抽出
+  ansible.builtin.shell: >
+    grep -E ':\s*\[[A-Z]\]' {{ patch_evidence_dir }}/process_status_before 2>/dev/null || true
+  register: all_proc_lines_cmd
+  changed_when: false
+
+- name: 異常プロセス行([N]以外)の抽出
+  ansible.builtin.shell: >
+    grep -E '\[[^N]\]' {{ patch_evidence_dir }}/process_status_before 2>/dev/null || true
+  register: abnormal_proc_lines_cmd
+  changed_when: false
+
+- name: プロセス判定フラグ設定
+  ansible.builtin.set_fact:
+    total_proc_count: "{{ (all_proc_lines_cmd.stdout_lines | length) }}"
+    abnormal_procs: "{{ abnormal_proc_lines_cmd.stdout_lines }}"
+    proc_has_abnormal: "{{ (abnormal_proc_lines_cmd.stdout | trim | length) > 0 }}"
+
+- name: プロセス判定結果確認
+  ansible.builtin.debug:
+    msg:
+      - "=== Process Status 判定 ==="
+      - "全監視プロセス数: {{ total_proc_count }}"
+      - "異常検知フラグ  : {{ proc_has_abnormal }}"
+      - "異常プロセス一覧:"
+      - "{{ abnormal_procs if proc_has_abnormal else ['全プロセス正常 (すべて [N])'] }}"
+
+- name: プロセス状態チェック判定
+  ansible.builtin.fail:
+    msg: >-
+      【プロセス状態異常エラー】以下のプロセスで正常(N)以外のステータスが検知されました。
+      {{ abnormal_procs | join(' / ') }}
+  when: proc_has_abnormal
 
 - name: カーネルバージョン確認
   command: uname -r

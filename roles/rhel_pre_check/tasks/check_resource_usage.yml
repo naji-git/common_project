@@ -112,3 +112,69 @@
            disk_msg if disk_over_threshold else ''
          ] | select('ne', '') | list | join(' / ') }}
   when: cpu_over_threshold or mem_over_threshold or disk_over_threshold
+
+# ==================================================
+# 5. RHEL 7 専用: /boot 容量確保 (kernel-debug 削除)
+# ==================================================
+- name: OS バージョン判定および kernel-debug 導入確認ブロック
+  when: ansible_distribution_major_version == '7'
+  block:
+    - name: 稼働中カーネルの確認
+      ansible.builtin.command: uname -r
+      register: current_kernel
+      changed_when: false
+
+    - name: 稼働中カーネルの安全確認
+      ansible.builtin.fail:
+        msg: "【危険】現在 kernel-debug でシステムが起動しているため削除を中断します。"
+      when: "'debug' in current_kernel.stdout"
+
+    - name: インストール済み kernel-debug パッケージの検出
+      ansible.builtin.shell: >
+        rpm -qa | grep -E '^kernel-debug-[0-9]' || true
+      register: installed_kernel_debug
+      changed_when: false
+
+    - name: kernel-debug 削除と容量確保ブロック
+      when:
+        - installed_kernel_debug.stdout | trim | length > 0
+        - "'debug' not in current_kernel.stdout"
+      block:
+        - name: 削除前 /boot 容量確認
+          ansible.builtin.shell: df -h /boot
+          register: df_boot_before
+          changed_when: false
+
+        - name: 削除前 RPM 一覧保存
+          ansible.builtin.shell: "rpm -qa | sort -n > {{ patch_evidence_dir }}/rpm_qa_before"
+          changed_when: false
+
+        - name: 削除シミュレーション (--assumeno で依存関係チェック)
+          ansible.builtin.command: "yum remove {{ installed_kernel_debug.stdout | trim }} --assumeno"
+          register: yum_check
+          failed_when: false
+          changed_when: false
+
+        - name: kernel-debug パッケージ削除実行
+          ansible.builtin.command: "yum remove -y {{ installed_kernel_debug.stdout | trim }}"
+
+        - name: 削除後 /boot 容量確認
+          ansible.builtin.shell: df -h /boot
+          register: df_boot_after
+          changed_when: false
+
+        - name: 削除後 RPM 一覧保存と差分確認
+          ansible.builtin.shell: |
+            rpm -qa | sort -n > {{ patch_evidence_dir }}/rpm_qa_after
+            diff {{ patch_evidence_dir }}/rpm_qa_before {{ patch_evidence_dir }}/rpm_qa_after || true
+          register: rpm_diff
+          changed_when: false
+
+        - name: 容量確保結果の表示
+          ansible.builtin.debug:
+            msg:
+              - "=== /boot 容量変化 ==="
+              - "削除前: {{ df_boot_before.stdout_lines[1] }}"
+              - "削除後: {{ df_boot_after.stdout_lines[1] }}"
+              - "=== 削除された RPM パッケージ ==="
+              - "{{ rpm_diff.stdout_lines }}"

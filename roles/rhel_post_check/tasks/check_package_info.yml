@@ -15,11 +15,11 @@
     mode: '0644'
 
 # --------------------------------------------------
-# 2. 事前・事後パッケージ差分確認
+# 2. 事前・事後パッケージ差分確認 (変更行のみ抽出)
 # --------------------------------------------------
-- name: パッケージ一覧の差分確認 (diff -u)
+- name: パッケージ一覧の差分確認 (更新対象のみ)
   ansible.builtin.shell: >
-    diff -u {{ patch_evidence_dir }}/rpm_qa.bf {{ patch_evidence_dir }}/rpm_qa.af || true
+    diff -u {{ patch_evidence_dir }}/rpm_qa.bf {{ patch_evidence_dir }}/rpm_qa.af | grep -E '^[+-][^+-]' || true
   register: rpm_qa_diff
   changed_when: false
 
@@ -32,6 +32,6 @@
 - name: パッケージ更新差分の表示
   ansible.builtin.debug:
     msg:
-      - "==================== [RPM 差分結果] ===================="
+      - "==================== [更新されたパッケージ] ===================="
       - "{{ '差分なし (パッケージ変更はありません)' if rpm_qa_diff.stdout | trim | length == 0 else rpm_qa_diff.stdout_lines }}"
-      - "=========================================================="
+      - "================================================================"

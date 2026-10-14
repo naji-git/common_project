@@ -4,7 +4,7 @@
 # --------------------------------------------------
 - name: "設定ファイルパスの判定 (RHEL7: yum.conf / RHEL8,9: dnf.conf)"
   ansible.builtin.set_fact:
-    target_pkg_conf: "{{ '/etc/yum.conf' if ansible_facts['distribution_major_version'] == '7' else '/etc/dnf/dnf.conf' }}"
+    target_pkg_conf: "{{ '/etc/yum.conf' if (ansible_distribution_major_version | string == '7') else '/etc/dnf/dnf.conf' }}"
 
 # --------------------------------------------------
 # 1. yum.conf / dnf.conf 確認
@@ -17,8 +17,6 @@
 - name: パッケージ管理設定ファイルの確認結果保存
   ansible.builtin.copy:
     content: "{{ pkg_conf_content.stdout }}\n"
-    # target_pkg_conf が /etc/yum.conf なら yum.conf_before
-    # /etc/dnf/dnf.conf なら dnf.conf_before に自動で切り替わります
     dest: "{{ patch_evidence_dir }}/{{ target_pkg_conf | basename }}_before"
     mode: '0644'
 

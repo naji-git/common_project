@@ -5,3 +5,6 @@
 
 - name: 事後システム状態の確認
   ansible.builtin.include_tasks: check_system_status.yml
+
+- name: 事後パッケージ情報の取得
+  ansible.builtin.include_tasks: check_package_info.yml

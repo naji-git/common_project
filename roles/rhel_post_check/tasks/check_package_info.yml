@@ -1,0 +1,37 @@
+---
+# --------------------------------------------------
+# 1. パッケージ一覧取得 (rpm -qa | sort -n)
+# --------------------------------------------------
+- name: パッケージ一覧取得 (rpm -qa | sort -n)
+  ansible.builtin.shell: >
+    rpm -qa | sort -n
+  register: rpm_qa_result
+  changed_when: false
+
+- name: パッケージ一覧結果保存 (rpm_qa.af)
+  ansible.builtin.copy:
+    content: "{{ rpm_qa_result.stdout }}\n"
+    dest: "{{ patch_evidence_dir }}/rpm_qa.af"
+    mode: '0644'
+
+# --------------------------------------------------
+# 2. 事前・事後パッケージ差分確認
+# --------------------------------------------------
+- name: パッケージ一覧の差分確認 (diff -u)
+  ansible.builtin.shell: >
+    diff -u {{ patch_evidence_dir }}/rpm_qa.bf {{ patch_evidence_dir }}/rpm_qa.af || true
+  register: rpm_qa_diff
+  changed_when: false
+
+- name: 差分結果の退避保存 (rpm_qa_diff)
+  ansible.builtin.copy:
+    content: "{{ rpm_qa_diff.stdout }}\n"
+    dest: "{{ patch_evidence_dir }}/rpm_qa_diff"
+    mode: '0644'
+
+- name: パッケージ更新差分の表示
+  ansible.builtin.debug:
+    msg:
+      - "==================== [RPM 差分結果] ===================="
+      - "{{ '差分なし (パッケージ変更はありません)' if rpm_qa_diff.stdout | trim | length == 0 else rpm_qa_diff.stdout_lines }}"
+      - "=========================================================="

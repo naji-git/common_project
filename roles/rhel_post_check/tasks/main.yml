@@ -8,3 +8,6 @@
 
 - name: 事後パッケージ情報の取得
   ansible.builtin.include_tasks: check_package_info.yml
+
+- name: httpd設定リストア
+  ansible.builtin.include_tasks: restore_httpd_conf.yml

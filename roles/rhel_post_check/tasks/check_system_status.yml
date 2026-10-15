@@ -6,7 +6,7 @@
 - name: プロセス状態確認結果保存
   ansible.builtin.copy:
     content: "{{ process_status.stdout }}\n"
-    dest: "{{ patch_evidence_dir }}/process_status_after""
+    dest: "{{ patch_evidence_dir }}/process_status_after"
     mode: '0644'
 
 - name: カーネルバージョン確認
@@ -174,3 +174,62 @@
 - name: サービス自動起動設定 差分結果表示
   ansible.builtin.debug:
     msg: "{{ unit_files_diff.stdout_lines }}"
+
+# --------------------------------------------------
+# 4. プロセス状態（sk_proc_dsp.sh）の比較・表示
+# --------------------------------------------------
+- name: プロセス状態の判定比較 (事前:N -> 事後:N以外 を検知)
+  ansible.builtin.shell: |
+    python3 - << 'EOF'
+    import sys
+
+    before_file = "{{ patch_evidence_dir }}/process_status_before"
+    after_file = "{{ patch_evidence_dir }}/process_status_after"
+
+    def parse_proc_file(filepath):
+        data = {}
+        try:
+            with open(filepath, 'r') as f:
+                for line in f:
+                    line_str = line.strip()
+                    if not line_str or line_str.startswith('#'):
+                        continue
+                    parts = line_str.split()
+                    # 形式に応じて対応: サービス名とステータス値
+                    # 例1: "service_name N" -> service: parts[0], status: parts[1]
+                    # 例2: 複数カラムで末尾がステータス値の場合にも対応
+                    if len(parts) >= 2:
+                        # 1列目をサービス名、2列目（または最後の列）をステータス値として保持
+                        service_name = parts[0]
+                        status = parts[1]
+                        data[service_name] = status
+        except Exception:
+            pass
+        return data
+
+    before = parse_proc_file(before_file)
+    after = parse_proc_file(after_file)
+
+    not_n_services = []
+
+    # 作業前にステータスが 'N' だったサービスを対象にチェック
+    for service, b_stat in before.items():
+        if b_stat == 'N':
+            a_stat = after.get(service, '未検出/停止')
+            if a_stat != 'N':
+                not_n_services.append(f"【非N状態検知】 サービス名: {service} (事前: {b_stat} --> 事後: {a_stat})")
+
+    if not_n_services:
+        print("\n".join(not_n_services))
+    else:
+        print("正常 (事前でNのサービスはすべて事後もNです)")
+    EOF
+  register: process_status_check
+  changed_when: false
+
+- name: プロセス状態 判定結果表示
+  ansible.builtin.debug:
+    msg:
+      - "==================== [プロセス状態判定結果] ===================="
+      - "{{ process_status_check.stdout_lines }}"
+      - "================================================================"

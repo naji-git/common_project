@@ -5,12 +5,12 @@
     path: /etc/httpd/conf/httpd.conf
   register: httpd_conf_stat
 
-# 2. httpd.conf が存在する場合のみ後続の取得・退避処理を実行
-- name: httpd設定情報取得および退避ブロック
+# 2. httpd.conf が存在する場合のみ後続の取得・退避・復旧処理を実行
+- name: httpd設定情報取得および退避・復旧ブロック
   when: httpd_conf_stat.stat.exists
   block:
     # 退避先ディレクトリ作成
-    - name: 退避先ディレクトリ作成 
+    - name: 退避先ディレクトリ作成
       ansible.builtin.file:
         path: /home/infra/rhel_patch
         state: directory
@@ -56,8 +56,87 @@
         mode: 'preserve'
       when: httpd_service_stat.stat.exists
 
+    # ==================================================
+    # 差分比較・余剰ファイル移動・設定およびサービス復旧
+    # ==================================================
+
+    # --- 4. conf.modules.d 比較と余剰ファイル退避 ---
+    - name: conf.modules.d 事後新規追加ファイルの検知
+      ansible.builtin.shell: >
+        diff -u /home/infra/rhel_patch/conf.modules.d.defore /home/infra/rhel_patch/conf.modules.d.after | grep -E '^\+[^+]' | awk '{print $NF}' || true
+      register: added_modules_files
+      changed_when: false
+
+    - name: conf.modules.d 余剰ファイルの退避 (/home/infra/rhel_patch へ移動)
+      ansible.builtin.command: "mv /etc/httpd/conf.modules.d/{{ item }} /home/infra/rhel_patch/"
+      loop: "{{ added_modules_files.stdout_lines }}"
+      when: added_modules_files.stdout_lines | length > 0
+
+    - name: conf.modules.d 移動後の状態再取得
+      ansible.builtin.shell: "ls -1 /etc/httpd/conf.modules.d > /home/infra/rhel_patch/conf.modules.d.after_mv"
+      changed_when: false
+
+    - name: conf.modules.d 最終差分確認 (defore と after_mv)
+      ansible.builtin.shell: >
+        diff -u /home/infra/rhel_patch/conf.modules.d.defore /home/infra/rhel_patch/conf.modules.d.after_mv || true
+      register: diff_modules_final
+      changed_when: false
+      failed_when: diff_modules_final.stdout | trim | length > 0
+
+    # --- 5. conf.d 比較と余剰ファイル退避 ---
+    - name: conf.d 事後新規追加ファイルの検知
+      ansible.builtin.shell: >
+        diff -u /home/infra/rhel_patch/conf.d.defore /home/infra/rhel_patch/conf.d.after | grep -E '^\+[^+]' | awk '{print $NF}' || true
+      register: added_confd_files
+      changed_when: false
+
+    - name: conf.d 余剰ファイルの退避 (/home/infra/rhel_patch へ移動)
+      ansible.builtin.command: "mv /etc/httpd/conf.d/{{ item }} /home/infra/rhel_patch/"
+      loop: "{{ added_confd_files.stdout_lines }}"
+      when: added_confd_files.stdout_lines | length > 0
+
+    - name: conf.d 移動後の状態再取得
+      ansible.builtin.shell: "ls -1 /etc/httpd/conf.d > /home/infra/rhel_patch/conf.d.after_mv"
+      changed_when: false
+
+    - name: conf.d 最終差分確認 (defore と after_mv)
+      ansible.builtin.shell: >
+        diff -u /home/infra/rhel_patch/conf.d.defore /home/infra/rhel_patch/conf.d.after_mv || true
+      register: diff_confd_final
+      changed_when: false
+      failed_when: diff_confd_final.stdout | trim | length > 0
+
+    # --- 6. httpd.service の復旧 ---
+    - name: httpd.service のリストア (before を配置)
+      ansible.builtin.copy:
+        src: /home/infra/rhel_patch/httpd.service.before
+        dest: /usr/lib/systemd/system/httpd.service
+        remote_src: true
+        mode: '0644'
+
+    # --- 7. Apache サービス再読み込みと起動確認 ---
+    - name: systemd デーモンの再読み込み (daemon-reload)
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: 起動前の httpd サービス状態確認
+      ansible.builtin.command: systemctl status httpd.service
+      register: httpd_status_before_start
+      failed_when: false
+      changed_when: false
+
+    - name: httpd サービスの起動
+      ansible.builtin.systemd:
+        name: httpd
+        state: started
+
+    - name: 起動後の httpd サービス状態確認
+      ansible.builtin.command: systemctl status httpd.service
+      register: httpd_status_after_start
+      changed_when: false
+
+# 3. httpd 未導入時のログ表示
 - name: httpd未導入時のスキップログ表示
   ansible.builtin.debug:
     msg: "/etc/httpd/conf/httpd.conf が存在しないため、httpd関連の退避・取得処理をスキップしました。"
   when: not httpd_conf_stat.stat.exists
-

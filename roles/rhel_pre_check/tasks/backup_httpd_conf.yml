@@ -26,7 +26,7 @@
     - name: conf.modules.d 配下の情報保存
       ansible.builtin.copy:
         content: "{{ conf_modules_list.stdout }}\n"
-        dest: /home/infra/rhel_patch/conf.modules.d.org
+        dest: /home/infra/rhel_patch/conf.modules.d.before
         mode: '0644'
 
     # --- 2. /etc/httpd/conf.d 配下情報取得 ---
@@ -39,7 +39,7 @@
     - name: conf.d 配下の情報保存
       ansible.builtin.copy:
         content: "{{ conf_d_list.stdout }}\n"
-        dest: /home/infra/rhel_patch/conf.d.org
+        dest: /home/infra/rhel_patch/conf.d.before
         mode: '0644'
 
     # --- 3. httpd.service 退避 ---
@@ -51,7 +51,7 @@
     - name: httpd.service 退避 (コピー)
       ansible.builtin.copy:
         src: /usr/lib/systemd/system/httpd.service
-        dest: /home/infra/rhel_patch/httpd.service.org
+        dest: /home/infra/rhel_patch/httpd.service.before
         remote_src: true
         mode: 'preserve'
       when: httpd_service_stat.stat.exists

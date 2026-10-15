@@ -23,7 +23,7 @@
     - name: /bin 配下の確認結果保存
       ansible.builtin.copy:
         content: "{{ pg_link_bin.stdout }}\n"
-        dest: "{{ patch_evidence_dir }}/pg_link_bin_bf"
+        dest: "{{ patch_evidence_dir }}/pg_link_bin_before"
         mode: '0644'
       when: pg_link_bin.stdout != ""
 
@@ -40,7 +40,7 @@
     - name: /usr/bin 配下の確認結果保存
       ansible.builtin.copy:
         content: "{{ pg_link_usr.stdout }}\n"
-        dest: "{{ patch_evidence_dir }}/pg_link_usr_bf"
+        dest: "{{ patch_evidence_dir }}/pg_link_usr_before"
         mode: '0644'
       when: pg_link_usr.stdout != ""
 

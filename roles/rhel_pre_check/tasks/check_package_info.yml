@@ -66,8 +66,8 @@
   register: rpm_qa_result
   changed_when: false
 
-- name: パッケージ一覧結果保存 (rpm_qa.bf)
+- name: パッケージ一覧結果保存 (rpm_qa_before)
   ansible.builtin.copy:
     content: "{{ rpm_qa_result.stdout }}\n"
-    dest: "{{ patch_evidence_dir }}/rpm_qa.bf"
+    dest: "{{ patch_evidence_dir }}/rpm_qa_before"
     mode: '0644'

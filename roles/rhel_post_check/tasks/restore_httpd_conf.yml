@@ -56,14 +56,14 @@
         mode: 'preserve'
       when: httpd_service_stat.stat.exists
 
-    # ==================================================
+# ==================================================
     # 差分比較・余剰ファイル移動・設定およびサービス復旧
     # ==================================================
 
     # --- 4. conf.modules.d 比較と余剰ファイル退避 ---
     - name: conf.modules.d 事後新規追加ファイルの検知
       ansible.builtin.shell: >
-        diff -u /home/infra/rhel_patch/conf.modules.d.defore /home/infra/rhel_patch/conf.modules.d.after | grep -E '^\+[^+]' | awk '{print $NF}' || true
+        diff -u /home/infra/rhel_patch/conf.modules.d.before /home/infra/rhel_patch/conf.modules.d.after | grep -E '^\+[^+]' | sed 's/^+//' || true
       register: added_modules_files
       changed_when: false
 
@@ -76,9 +76,9 @@
       ansible.builtin.shell: "ls -1 /etc/httpd/conf.modules.d > /home/infra/rhel_patch/conf.modules.d.after_mv"
       changed_when: false
 
-    - name: conf.modules.d 最終差分確認 (defore と after_mv)
+    - name: conf.modules.d 最終差分確認 (before と after_mv)
       ansible.builtin.shell: >
-        diff -u /home/infra/rhel_patch/conf.modules.d.defore /home/infra/rhel_patch/conf.modules.d.after_mv || true
+        diff -u /home/infra/rhel_patch/conf.modules.d.before /home/infra/rhel_patch/conf.modules.d.after_mv || true
       register: diff_modules_final
       changed_when: false
       failed_when: diff_modules_final.stdout | trim | length > 0
@@ -86,7 +86,7 @@
     # --- 5. conf.d 比較と余剰ファイル退避 ---
     - name: conf.d 事後新規追加ファイルの検知
       ansible.builtin.shell: >
-        diff -u /home/infra/rhel_patch/conf.d.defore /home/infra/rhel_patch/conf.d.after | grep -E '^\+[^+]' | awk '{print $NF}' || true
+        diff -u /home/infra/rhel_patch/conf.d.before /home/infra/rhel_patch/conf.d.after | grep -E '^\+[^+]' | sed 's/^+//' || true
       register: added_confd_files
       changed_when: false
 
@@ -99,9 +99,9 @@
       ansible.builtin.shell: "ls -1 /etc/httpd/conf.d > /home/infra/rhel_patch/conf.d.after_mv"
       changed_when: false
 
-    - name: conf.d 最終差分確認 (defore と after_mv)
+    - name: conf.d 最終差分確認 (before と after_mv)
       ansible.builtin.shell: >
-        diff -u /home/infra/rhel_patch/conf.d.defore /home/infra/rhel_patch/conf.d.after_mv || true
+        diff -u /home/infra/rhel_patch/conf.d.before /home/infra/rhel_patch/conf.d.after_mv || true
       register: diff_confd_final
       changed_when: false
       failed_when: diff_confd_final.stdout | trim | length > 0

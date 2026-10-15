@@ -1,0 +1,50 @@
+---
+# 1. PostgreSQLがインストールされているか確認 (which psql)
+- name: PostgreSQL インストール有無確認
+  ansible.builtin.command: which psql
+  register: check_psql
+  failed_when: false
+  changed_when: false
+
+# 2. PostgreSQLが存在する場合のみ、リンク事前確認処理を実行
+- name: PostgreSQL 関連リンク事前確認ブロック
+  when: check_psql.rc == 0
+  block:
+    # /bin 配下の確認
+    - name: /bin 配下の PostgreSQL 関連リンク確認
+      ansible.builtin.command: >
+        ls -l /bin/psql /bin/clusterdb /bin/createdb /bin/createuser
+        /bin/dropdb /bin/dropuser /bin/pg_basebackup /bin/pg_dump
+        /bin/pg_dumpall /bin/pg_restore /bin/reindexdb /bin/vacuumdb
+      register: pg_link_bin
+      failed_when: false
+      changed_when: false
+
+    - name: /bin 配下の確認結果保存
+      ansible.builtin.copy:
+        content: "{{ pg_link_bin.stdout }}\n"
+        dest: "{{ patch_evidence_dir }}/pg_link_bin_before"
+        mode: '0644'
+      when: pg_link_bin.stdout != ""
+
+    # /usr/bin 配下の確認
+    - name: /usr/bin 配下の PostgreSQL 関連リンク確認
+      ansible.builtin.command: >
+        ls -l /usr/bin/psql /usr/bin/clusterdb /usr/bin/createdb /usr/bin/createuser
+        /usr/bin/dropdb /usr/bin/dropuser /usr/bin/pg_basebackup /usr/bin/pg_dump
+        /usr/bin/pg_dumpall /usr/bin/pg_restore /usr/bin/reindexdb /usr/bin/vacuumdb
+      register: pg_link_usr
+      failed_when: false
+      changed_when: false
+
+    - name: /usr/bin 配下の確認結果保存
+      ansible.builtin.copy:
+        content: "{{ pg_link_usr.stdout }}\n"
+        dest: "{{ patch_evidence_dir }}/pg_link_usr_before"
+        mode: '0644'
+      when: pg_link_usr.stdout != ""
+
+- name: PostgreSQL未導入時のスキップログ表示
+  ansible.builtin.debug:
+    msg: "PostgreSQL is not installed. Skipping PostgreSQL link check."
+  when: check_psql.rc != 0

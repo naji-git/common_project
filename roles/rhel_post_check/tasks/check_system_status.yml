@@ -182,26 +182,26 @@
   ansible.builtin.shell: |
     python3 - << 'EOF'
     import sys
+    import re
 
     before_file = "{{ patch_evidence_dir }}/process_status_before"
     after_file = "{{ patch_evidence_dir }}/process_status_after"
 
     def parse_proc_file(filepath):
         data = {}
+        # 例: "DEV-REHL9-01 : [N][ 1 / 1 ]   /sbin/rsyslogd"
+        # [N] や [C] のステータスと、行末のプロセス名を抽出
+        pattern = re.compile(r'\[([A-Z])\]\s*\[.*?\]\s+(\S+)$')
         try:
             with open(filepath, 'r') as f:
                 for line in f:
                     line_str = line.strip()
-                    if not line_str or line_str.startswith('#'):
+                    if not line_str or line_str.startswith('='):
                         continue
-                    parts = line_str.split()
-                    # 形式に応じて対応: サービス名とステータス値
-                    # 例1: "service_name N" -> service: parts[0], status: parts[1]
-                    # 例2: 複数カラムで末尾がステータス値の場合にも対応
-                    if len(parts) >= 2:
-                        # 1列目をサービス名、2列目（または最後の列）をステータス値として保持
-                        service_name = parts[0]
-                        status = parts[1]
+                    m = pattern.search(line_str)
+                    if m:
+                        status = m.group(1)       # 'N', 'C', など
+                        service_name = m.group(2) # '/sbin/rsyslogd'
                         data[service_name] = status
         except Exception:
             pass
@@ -217,7 +217,7 @@
         if b_stat == 'N':
             a_stat = after.get(service, '未検出/停止')
             if a_stat != 'N':
-                not_n_services.append(f"【非N状態検知】 サービス名: {service} (事前: {b_stat} --> 事後: {a_stat})")
+                not_n_services.append(f"【非N状態検知】 サービス名: {service} (事前: [{b_stat}] --> 事後: [{a_stat}])")
 
     if not_n_services:
         print("\n".join(not_n_services))

@@ -8,10 +8,10 @@
   register: rpm_qa_result
   changed_when: false
 
-- name: パッケージ一覧結果保存 (rpm_qa.af)
+- name: パッケージ一覧結果保存 (rpm_qa_after)
   ansible.builtin.copy:
     content: "{{ rpm_qa_result.stdout }}\n"
-    dest: "{{ patch_evidence_dir }}/rpm_qa.af"
+    dest: "{{ patch_evidence_dir }}/rpm_qa_after"
     mode: '0644'
 
 # --------------------------------------------------
@@ -19,7 +19,7 @@
 # --------------------------------------------------
 - name: パッケージ一覧の差分確認 (更新対象のみ)
   ansible.builtin.shell: >
-    diff -u {{ patch_evidence_dir }}/rpm_qa.bf {{ patch_evidence_dir }}/rpm_qa.af | grep -E '^[+-][^+-]' || true
+    diff -u {{ patch_evidence_dir }}/rpm_qa_before {{ patch_evidence_dir }}/rpm_qa_after | grep -E '^[+-][^+-]' || true
   register: rpm_qa_diff
   changed_when: false
 

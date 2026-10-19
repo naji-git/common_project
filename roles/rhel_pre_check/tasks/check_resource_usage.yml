@@ -105,10 +105,12 @@
 
 # ==================================================
 # 5. RHEL 7 専用: /boot 容量確保 (kernel-debug 削除)
+# 対象: RHEL 7 かつ ホスト名が "SV" から始まる仮想基盤のサーバ
 # ==================================================
-- name: "Ensure boot partition space on RHEL 7"
+- name: "Ensure boot partition space on RHEL 7 (SV hosts only)"
   when:
     - ansible_facts['distribution_major_version'] == "7"
+    - ansible_facts['hostname'] is match('^SV.*')
   block:
     # 稼働中カーネルの名称を取得するため command を使用
     - name: "Check running kernel release"

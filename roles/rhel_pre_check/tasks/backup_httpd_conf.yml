@@ -26,7 +26,7 @@
     - name: "Save conf.modules.d file list to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_conf_modules_list.stdout }}\n"
-        dest: "{{ patch_evidence_dir }}/conf.modules.d.before"
+        dest: "{{ patch_evidence_dir }}/conf.modules.d_before"
         mode: "0644"
 
     # --- 2. /etc/httpd/conf.d 配下情報取得 ---
@@ -40,7 +40,7 @@
     - name: "Save conf.d file list to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_conf_d_list.stdout }}\n"
-        dest: "{{ patch_evidence_dir }}/conf.d.before"
+        dest: "{{ patch_evidence_dir }}/conf.d_before"
         mode: "0644"
 
     # --- 3. httpd.service 退避 ---
@@ -52,7 +52,7 @@
     - name: "Backup original httpd systemd service file"
       ansible.builtin.copy:
         src: "/usr/lib/systemd/system/httpd.service"
-        dest: "{{ patch_evidence_dir }}/httpd.service.before"
+        dest: "{{ patch_evidence_dir }}/httpd.service_before"
         remote_src: true
         mode: preserve
       when: __rhel_pre_check_httpd_service_stat.stat.exists | bool

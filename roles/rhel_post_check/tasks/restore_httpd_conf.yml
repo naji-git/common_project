@@ -26,7 +26,7 @@
     - name: "Save conf.modules.d file list to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_post_check_conf_modules_list.stdout }}\n"
-        dest: "{{ patch_evidence_dir }}/conf.modules.d.after"
+        dest: "{{ patch_evidence_dir }}/conf.modules.d_after"
         mode: "0644"
 
     # --- 2. /etc/httpd/conf.d 配下情報取得 ---
@@ -40,7 +40,7 @@
     - name: "Save conf.d file list to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_post_check_conf_d_list.stdout }}\n"
-        dest: "{{ patch_evidence_dir }}/conf.d.after"
+        dest: "{{ patch_evidence_dir }}/conf.d_after"
         mode: "0644"
 
     # --- 3. httpd.service 退避 ---
@@ -52,7 +52,7 @@
     - name: "Backup post-patch httpd systemd service file"
       ansible.builtin.copy:
         src: "/usr/lib/systemd/system/httpd.service"
-        dest: "{{ patch_evidence_dir }}/httpd.service.after"
+        dest: "{{ patch_evidence_dir }}/httpd.service_after"
         remote_src: true
         mode: preserve
       when: __rhel_post_check_httpd_service_stat.stat.exists | bool
@@ -65,7 +65,7 @@
     # 事前・事後一覧の差分から新規追加分のみを抽出するため diff, grep, sed を組み合わせた shell を使用
     - name: "Detect added configuration files in conf.modules.d"
       ansible.builtin.shell: >-
-        diff -u {{ patch_evidence_dir }}/conf.modules.d.before {{ patch_evidence_dir }}/conf.modules.d.after | grep -E '^\+[^+]' | sed 's/^+//' || true
+        diff -u {{ patch_evidence_dir }}/conf.modules.d_before {{ patch_evidence_dir }}/conf.modules.d_after | grep -E '^\+[^+]' | sed 's/^+//' || true
       register: __rhel_post_check_added_modules_files
       changed_when: false
 
@@ -77,13 +77,13 @@
 
     # 余剰ファイル移動後のディレクトリ状態を再取得・保存するためリダイレクトを含む shell を使用
     - name: "Rescan files in conf.modules.d after cleanup"
-      ansible.builtin.shell: "ls -1 /etc/httpd/conf.modules.d > {{ patch_evidence_dir }}/conf.modules.d.after_mv"
+      ansible.builtin.shell: "ls -1 /etc/httpd/conf.modules.d > {{ patch_evidence_dir }}/conf.modules.d_after_mv"
       changed_when: false
 
     # 移動後状態と事前エビデンスが完全一致しているか検証するため shell を使用
     - name: "Verify conf.modules.d matches pre-patch state"
       ansible.builtin.shell: >-
-        diff -u {{ patch_evidence_dir }}/conf.modules.d.before {{ patch_evidence_dir }}/conf.modules.d.after_mv || true
+        diff -u {{ patch_evidence_dir }}/conf.modules.d_before {{ patch_evidence_dir }}/conf.modules.d_after_mv || true
       register: __rhel_post_check_diff_modules_final
       changed_when: false
       failed_when: __rhel_post_check_diff_modules_final.stdout | trim | length > 0
@@ -92,7 +92,7 @@
     # 事前・事後一覧の差分から新規追加分のみを抽出するため diff, grep, sed を組み合わせた shell を使用
     - name: "Detect added configuration files in conf.d"
       ansible.builtin.shell: >-
-        diff -u {{ patch_evidence_dir }}/conf.d.before {{ patch_evidence_dir }}/conf.d.after | grep -E '^\+[^+]' | sed 's/^+//' || true
+        diff -u {{ patch_evidence_dir }}/conf.d_before {{ patch_evidence_dir }}/conf.d_after | grep -E '^\+[^+]' | sed 's/^+//' || true
       register: __rhel_post_check_added_confd_files
       changed_when: false
 
@@ -104,13 +104,13 @@
 
     # 余剰ファイル移動後のディレクトリ状態を再取得・保存するためリダイレクトを含む shell を使用
     - name: "Rescan files in conf.d after cleanup"
-      ansible.builtin.shell: "ls -1 /etc/httpd/conf.d > {{ patch_evidence_dir }}/conf.d.after_mv"
+      ansible.builtin.shell: "ls -1 /etc/httpd/conf.d > {{ patch_evidence_dir }}/conf.d_after_mv"
       changed_when: false
 
     # 移動後状態と事前エビデンスが完全一致しているか検証するため shell を使用
     - name: "Verify conf.d matches pre-patch state"
       ansible.builtin.shell: >-
-        diff -u {{ patch_evidence_dir }}/conf.d.before {{ patch_evidence_dir }}/conf.d.after_mv || true
+        diff -u {{ patch_evidence_dir }}/conf.d_before {{ patch_evidence_dir }}/conf.d_after_mv || true
       register: __rhel_post_check_diff_confd_final
       changed_when: false
       failed_when: __rhel_post_check_diff_confd_final.stdout | trim | length > 0
@@ -118,7 +118,7 @@
     # --- 6. httpd.service の復旧 ---
     - name: "Restore pre-patch httpd systemd service file"
       ansible.builtin.copy:
-        src: "{{ patch_evidence_dir }}/httpd.service.before"
+        src: "{{ patch_evidence_dir }}/httpd.service_before"
         dest: "/usr/lib/systemd/system/httpd.service"
         remote_src: true
         mode: "0644"

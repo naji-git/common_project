@@ -15,5 +15,5 @@
 - name: postgresqlリンク設定リストア
   ansible.builtin.include_tasks: restore_postgresql_link.yml
   
-  - name: 事後のステータス確認(SAM監視、JP1、EDR、監視抑止ファイル)
+  - name: "事後のステータス確認(SAM監視、JP1、EDR、監視抑止ファイル)"
   ansible.builtin.include_tasks: check_agent_status.yml

@@ -2,72 +2,75 @@
 # --------------------------------------------------
 # 0. OSメジャーバージョンに応じた対象設定ファイルの決定
 # --------------------------------------------------
-- name: "設定ファイルパスの判定 (RHEL7: yum.conf / RHEL8,9: dnf.conf)"
+- name: "Determine package manager configuration file path"
   ansible.builtin.set_fact:
-    target_pkg_conf: "{{ '/etc/yum.conf' if (ansible_distribution_major_version | string == '7') else '/etc/dnf/dnf.conf' }}"
+    __rhel_pre_check_target_pkg_conf: "{{ '/etc/yum.conf' if (ansible_facts['distribution_major_version'] | string == '7') else '/etc/dnf/dnf.conf' }}"
 
 # --------------------------------------------------
 # 1. yum.conf / dnf.conf 確認
 # --------------------------------------------------
-- name: パッケージ管理設定ファイルの内容確認
-  ansible.builtin.command: "cat {{ target_pkg_conf }}"
-  register: pkg_conf_content
-  changed_when: false
+# 設定ファイルの内容全体をバイナリ安全に読み込むため slurp モジュールを使用
+- name: "Read package manager configuration file"
+  ansible.builtin.slurp:
+    src: "{{ __rhel_pre_check_target_pkg_conf }}"
+  register: __rhel_pre_check_pkg_conf_slurp
 
-- name: パッケージ管理設定ファイルの確認結果保存
+- name: "Save package manager configuration to evidence file"
   ansible.builtin.copy:
-    content: "{{ pkg_conf_content.stdout }}\n"
-    dest: "{{ patch_evidence_dir }}/{{ target_pkg_conf | basename }}_before"
-    mode: '0644'
+    content: "{{ __rhel_pre_check_pkg_conf_slurp.content | b64decode }}"
+    dest: "{{ patch_evidence_dir }}/{{ __rhel_pre_check_target_pkg_conf | basename }}_before"
+    mode: "0644"
 
 # --------------------------------------------------
 # 2. yum.conf / dnf.conf 修正
 # ※ 有効な exclude 行が存在する場合のみ実行
 # --------------------------------------------------
-# 有効な exclude 行（先頭が # や ; ではない行）が存在するか確認
-- name: 有効な exclude 行の存在確認
+- name: "Check if active exclude directive exists"
   ansible.builtin.lineinfile:
-    path: "{{ target_pkg_conf }}"
+    path: "{{ __rhel_pre_check_target_pkg_conf }}"
     regexp: '^\s*exclude\s*=.*kernel.*'
     state: absent
   check_mode: true
-  register: check_exclude
+  register: __rhel_pre_check_check_exclude
   changed_when: false
 
-# 有効な exclude 行が存在する場合のみ実行するブロック
-- name: 設定ファイル修正ブロック (exclude 設定が存在する場合のみ)
-  when: check_exclude.found is defined and check_exclude.found > 0
+- name: "Modify package manager configuration when exclude is present"
+  when:
+    - __rhel_pre_check_check_exclude.found is defined
+    - __rhel_pre_check_check_exclude.found > 0
   block:
-    - name: 変更前ファイルのバックアップ取得
+    - name: "Backup original package manager configuration file"
       ansible.builtin.copy:
-        src: "{{ target_pkg_conf }}"
-        dest: "{{ target_pkg_conf }}_{{ ansible_date_time.date | replace('-', '') }}"
+        src: "{{ __rhel_pre_check_target_pkg_conf }}"
+        dest: "{{ __rhel_pre_check_target_pkg_conf }}_{{ ansible_facts['date_time']['date'] | replace('-', '') }}"
         remote_src: true
-        mode: 'preserve'
+        mode: preserve
 
-    - name: installonly_limit を 2 に変更
+    - name: "Update installonly_limit value to 2"
       ansible.builtin.lineinfile:
-        path: "{{ target_pkg_conf }}"
+        path: "{{ __rhel_pre_check_target_pkg_conf }}"
         regexp: '^\s*installonly_limit\s*='
-        line: 'installonly_limit=2'
+        line: "installonly_limit=2"
         state: present
 
-    - name: exclude 行をコメントアウト
+    - name: "Comment out exclude directive in configuration file"
       ansible.builtin.replace:
-        path: "{{ target_pkg_conf }}"
+        path: "{{ __rhel_pre_check_target_pkg_conf }}"
         regexp: '^(\s*exclude\s*=.*kernel.*)'
         replace: '#\1'
+
 # --------------------------------------------------
 # 3. パッケージ一覧取得 (rpm -qa | sort -n)
 # --------------------------------------------------
-- name: パッケージ一覧取得 (rpm -qa | sort -n)
-  ansible.builtin.shell: >
+# RPMパッケージ一覧をバージョン順にソートして一括抽出するためパイプを伴う shell を使用
+- name: "Retrieve sorted list of installed RPM packages"
+  ansible.builtin.shell: >-
     rpm -qa | sort -n
-  register: rpm_qa_result
+  register: __rhel_pre_check_rpm_qa_result
   changed_when: false
 
-- name: パッケージ一覧結果保存 (rpm_qa_before)
+- name: "Save RPM package list to evidence file"
   ansible.builtin.copy:
-    content: "{{ rpm_qa_result.stdout }}\n"
+    content: "{{ __rhel_pre_check_rpm_qa_result.stdout }}\n"
     dest: "{{ patch_evidence_dir }}/rpm_qa_before"
-    mode: '0644'
+    mode: "0644"

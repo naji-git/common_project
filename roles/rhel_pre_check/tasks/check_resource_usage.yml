@@ -1,180 +1,175 @@
 ---
-- name: 事前情報取得用ディレクトリ作成
+- name: "Create evidence directory for pre-check"
   ansible.builtin.file:
     path: "{{ patch_evidence_dir }}"
     state: directory
-    mode: '0755'
+    mode: "0755"
 
 # --------------------------------------------------
 # 1. CPU使用率確認 & 閾値チェック
 # --------------------------------------------------
-- name: 事前CPU使用率確認 (sar -u より現行使用率を計算)
-  ansible.builtin.shell: >
+# sar コマンドの出力から現行CPU使用率を即座に算出する標準モジュールが存在しないため shell を使用
+- name: "Check current CPU usage"
+  ansible.builtin.shell: >-
     LANG=C sar -u 1 1 | awk 'END {printf "%.0f", 100 - $NF}'
-  register: current_cpu_usage
+  register: __rhel_pre_check_current_cpu_usage
   changed_when: false
 
-- name: 事前CPU全体ログ取得 (sar -u)
+# 過去ログを含めた sar 全体出力をエビデンス化するため command を使用
+- name: "Get sar CPU usage logs"
   ansible.builtin.command: sar -u
-  register: cpu_usage
+  register: __rhel_pre_check_cpu_usage
   changed_when: false
 
-- name: CPU使用率結果保存
+- name: "Save CPU usage logs to evidence file"
   ansible.builtin.copy:
-    content: "{{ cpu_usage.stdout }}\n"
+    content: "{{ __rhel_pre_check_cpu_usage.stdout }}\n"
     dest: "{{ patch_evidence_dir }}/cpu_usage_before"
-    mode: '0644'
-
-- name: CPU閾値判定フラグ設定
-  ansible.builtin.set_fact:
-    cpu_over_threshold: "{{ (current_cpu_usage.stdout | trim | float) > (threshold_cpu_usage | float) }}"
-    cpu_msg: "CPU使用率が閾値を超過 (現行: {{ current_cpu_usage.stdout | trim }}%, 閾値: {{ threshold_cpu_usage }}%)"
+    mode: "0644"
 
 # --------------------------------------------------
 # 2. メモリ使用率確認 & 閾値チェック
 # --------------------------------------------------
-- name: 事前メモリ使用率確認 (sar -r %memused取得)
-  ansible.builtin.shell: >
+# sar コマンドの出力から現行メモリ使用率を取得する標準モジュールが存在しないため shell を使用
+- name: "Check current memory usage"
+  ansible.builtin.shell: >-
     LANG=C sar -r 1 1 | awk '/Average:/ {printf "%.0f", $5}'
-  register: current_mem_usage
+  register: __rhel_pre_check_current_mem_usage
   changed_when: false
 
-- name: メモリ使用ログ整形取得
-  ansible.builtin.shell: >
+# メモリ使用率の整形ログをエビデンス化するためパイプ処理を伴う shell を使用
+- name: "Get formatted memory usage logs"
+  ansible.builtin.shell: >-
     LANG=C; sar -r 1 1 |
     grep -vE "Linux|kbmemfree|^$|Average" |
     awk '{print $1, $5}'
-  register: mem_usage
+  register: __rhel_pre_check_mem_usage
   changed_when: false
 
-- name: 事前メモリ使用率結果保存
+- name: "Save memory usage logs to evidence file"
   ansible.builtin.copy:
-    content: "{{ mem_usage.stdout }}\n"
+    content: "{{ __rhel_pre_check_mem_usage.stdout }}\n"
     dest: "{{ patch_evidence_dir }}/mem_usage_before"
-    mode: '0644'
-
-- name: メモリ閾値判定フラグ設定
-  ansible.builtin.set_fact:
-    mem_over_threshold: "{{ (current_mem_usage.stdout | trim | float) > (threshold_mem_usage | float) }}"
-    mem_msg: "メモリ使用率が閾値を超過 (現行: {{ current_mem_usage.stdout | trim }}%, 閾値: {{ threshold_mem_usage }}%)"
+    mode: "0644"
 
 # --------------------------------------------------
 # 3. ディスク使用率確認 & 閾値チェック (/ 使用率)
 # --------------------------------------------------
-- name: 事前ディスク使用率確認 (/ の使用率%取得)
-  ansible.builtin.shell: >
+# ルートパーティションの使用率数値(%)を直接抽出するため shell を使用
+- name: "Check current root partition disk usage"
+  ansible.builtin.shell: >-
     df -h / | awk 'NR==2 {gsub("%",""); print $5}'
-  register: current_disk_usage
+  register: __rhel_pre_check_current_disk_usage
   changed_when: false
 
-- name: 事前ディスク使用率確認 (df -h 全体)
+# システム全体のディスク構成・使用状況をエビデンス化するため command を使用
+- name: "Get entire disk usage logs"
   ansible.builtin.command: df -h
-  register: disk_usage
+  register: __rhel_pre_check_disk_usage
   changed_when: false
 
-- name: ディスク使用率結果保存
+- name: "Save disk usage logs to evidence file"
   ansible.builtin.copy:
-    content: "{{ disk_usage.stdout }}\n"
+    content: "{{ __rhel_pre_check_disk_usage.stdout }}\n"
     dest: "{{ patch_evidence_dir }}/disk_usage_before"
-    mode: '0644'
-
-- name: ディスク閾値判定フラグ設定
-  ansible.builtin.set_fact:
-    disk_over_threshold: "{{ (current_disk_usage.stdout | trim | float) > (threshold_disk_usage | float) }}"
-    disk_msg: "Disk使用率が閾値を超過 (現行: {{ current_disk_usage.stdout | trim }}%, 閾値: {{ threshold_disk_usage }}%)"
+    mode: "0644"
 
 # --------------------------------------------------
-# 4. 全チェック完了後の総合判定（いずれかが超過していれば異常終了）
+# 4. 全チェック完了後の総合判定
 # --------------------------------------------------
-- name: "リソース判定"
+- name: "Display gathered resource usage"
   ansible.builtin.debug:
     msg:
       - "=== CPU ==="
-      - "使用率: '{{ current_cpu_usage.stdout | trim }}'"
+      - "使用率: '{{ __rhel_pre_check_current_cpu_usage.stdout | trim }}'"
       - "閾値  : '{{ threshold_cpu_usage }}'"
-      - "フラグ: {{ cpu_over_threshold }}"
       - "=== Memory ==="
-      - "使用率: '{{ current_mem_usage.stdout | trim }}'"
+      - "使用率: '{{ __rhel_pre_check_current_mem_usage.stdout | trim }}'"
       - "閾値  : '{{ threshold_mem_usage }}'"
-      - "フラグ: {{ mem_over_threshold }}"
       - "=== Disk(/の使用率) ==="
-      - "使用率: '{{ current_disk_usage.stdout | trim }}'"
+      - "使用率: '{{ __rhel_pre_check_current_disk_usage.stdout | trim }}'"
       - "閾値  : '{{ threshold_disk_usage }}'"
-      - "フラグ: {{ disk_over_threshold }}"
 
-- name: リソース閾値チェック総合判定
-  ansible.builtin.fail:
-    msg: >-
-      【リソース閾値超過エラー】以下の項目で閾値を超過しています。
-      {{ [
-           cpu_msg if cpu_over_threshold else '',
-           mem_msg if mem_over_threshold else '',
-           disk_msg if disk_over_threshold else ''
-         ] | select('ne', '') | list | join(' / ') }}
-  when: cpu_over_threshold or mem_over_threshold or disk_over_threshold
+- name: "Verify resource usage is within thresholds"
+  ansible.builtin.assert:
+    that:
+      - (__rhel_pre_check_current_cpu_usage.stdout | trim | float) <= (threshold_cpu_usage | float)
+      - (__rhel_pre_check_current_mem_usage.stdout | trim | float) <= (threshold_mem_usage | float)
+      - (__rhel_pre_check_current_disk_usage.stdout | trim | float) <= (threshold_disk_usage | float)
+    fail_msg: >-
+      リソース使用率が許容閾値を超過しています。高負荷プロセスを停止またはリソースを増強してから再実行してください。
+      (CPU: {{ __rhel_pre_check_current_cpu_usage.stdout | trim }}%/閾値: {{ threshold_cpu_usage }}%,
+      MEM: {{ __rhel_pre_check_current_mem_usage.stdout | trim }}%/閾値: {{ threshold_mem_usage }}%,
+      DISK: {{ __rhel_pre_check_current_disk_usage.stdout | trim }}%/閾値: {{ threshold_disk_usage }}%)
+    success_msg: "すべてのリソース使用率が正常範囲内です。"
 
 # ==================================================
 # 5. RHEL 7 専用: /boot 容量確保 (kernel-debug 削除)
 # ==================================================
-- name: OS バージョン判定および kernel-debug 導入確認ブロック
-  when: ansible_distribution_major_version == '7'
+- name: "Ensure boot partition space on RHEL 7"
+  when:
+    - ansible_facts['distribution_major_version'] == "7"
   block:
-    - name: 稼働中カーネルの確認
+    # 稼働中カーネルの名称を取得するため command を使用
+    - name: "Check running kernel release"
       ansible.builtin.command: uname -r
-      register: current_kernel
+      register: __rhel_pre_check_current_kernel
       changed_when: false
 
-    - name: 稼働中カーネルの安全確認
-      ansible.builtin.fail:
-        msg: "【危険】現在 kernel-debug でシステムが起動しているため削除を中断します。"
-      when: "'debug' in current_kernel.stdout"
+    - name: "Assert running kernel is not a debug kernel"
+      ansible.builtin.assert:
+        that:
+          - "'debug' not in __rhel_pre_check_current_kernel.stdout"
+        fail_msg: "現在 kernel-debug で起動しているため削除できません。通常カーネルで再起動後に再実行してください。"
 
-    - name: インストール済み kernel-debug パッケージの検出
-      ansible.builtin.shell: >
+    # パッケージの存在を正規表現で検出するため shell を使用
+    - name: "Detect installed kernel-debug packages"
+      ansible.builtin.shell: >-
         rpm -qa | grep -E '^kernel-debug-[0-9]' || true
-      register: installed_kernel_debug
+      register: __rhel_pre_check_installed_kernel_debug
       changed_when: false
 
-    - name: kernel-debug 削除と容量確保ブロック
+    - name: "Remove kernel-debug packages if installed"
       when:
-        - installed_kernel_debug.stdout | trim | length > 0
-        - "'debug' not in current_kernel.stdout"
+        - __rhel_pre_check_installed_kernel_debug.stdout | trim | length > 0
       block:
-        - name: 削除前 /boot 容量確認
+        # 削除前の /boot 領域サイズを確認するため shell を使用
+        - name: "Check /boot disk space before removal"
           ansible.builtin.shell: df -h /boot
-          register: df_boot_before
+          register: __rhel_pre_check_df_boot_before
           changed_when: false
 
-        - name: 削除前 RPM 一覧保存
-          ansible.builtin.shell: "rpm -qa | sort -n > {{ patch_evidence_dir }}/rpm_qa_before"
+        # 削除前の RPM 一覧を退避するため shell を使用
+        - name: "Save RPM package list before removal"
+          ansible.builtin.shell: >-
+            rpm -qa | sort -n > {{ patch_evidence_dir }}/rpm_qa_before
           changed_when: false
 
-        - name: 削除シミュレーション (--assumeno で依存関係チェック)
-          ansible.builtin.command: "yum remove {{ installed_kernel_debug.stdout | trim }} --assumeno"
-          register: yum_check
-          failed_when: false
-          changed_when: false
+        # 専用モジュール ansible.builtin.yum を使用して冪等性を確保
+        - name: "Remove installed kernel-debug packages"
+          ansible.builtin.yum:
+            name: "{{ __rhel_pre_check_installed_kernel_debug.stdout_lines }}"
+            state: absent
 
-        - name: kernel-debug パッケージ削除実行
-          ansible.builtin.command: "yum remove -y {{ installed_kernel_debug.stdout | trim }}"
-
-        - name: 削除後 /boot 容量確認
+        # 削除後の /boot 領域サイズを確認するため shell を使用
+        - name: "Check /boot disk space after removal"
           ansible.builtin.shell: df -h /boot
-          register: df_boot_after
+          register: __rhel_pre_check_df_boot_after
           changed_when: false
 
-        - name: 削除後 RPM 一覧保存と差分確認
-          ansible.builtin.shell: |
+        # 削除後の差分確認と一覧退避のため shell を使用
+        - name: "Save RPM package list after removal and generate diff"
+          ansible.builtin.shell: >-
             rpm -qa | sort -n > {{ patch_evidence_dir }}/rpm_qa_after
-            diff {{ patch_evidence_dir }}/rpm_qa_before {{ patch_evidence_dir }}/rpm_qa_after || true
-          register: rpm_diff
+            diff -u {{ patch_evidence_dir }}/rpm_qa_before {{ patch_evidence_dir }}/rpm_qa_after || true
+          register: __rhel_pre_check_rpm_diff
           changed_when: false
 
-        - name: 容量確保結果の表示
+        - name: "Display /boot cleanup results"
           ansible.builtin.debug:
             msg:
               - "=== /boot 容量変化 ==="
-              - "削除前: {{ df_boot_before.stdout_lines[1] }}"
-              - "削除後: {{ df_boot_after.stdout_lines[1] }}"
+              - "削除前: {{ __rhel_pre_check_df_boot_before.stdout_lines[1] }}"
+              - "削除後: {{ __rhel_pre_check_df_boot_after.stdout_lines[1] }}"
               - "=== 削除された RPM パッケージ ==="
-              - "{{ rpm_diff.stdout_lines }}"
+              - "{{ __rhel_pre_check_rpm_diff.stdout_lines }}"

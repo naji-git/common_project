@@ -1,63 +1,63 @@
 ---
 # 1. httpd.conf の存在確認（存在しない場合は作業不要の判定）
-- name: httpd.conf 存在確認
+- name: "Check if httpd configuration file exists"
   ansible.builtin.stat:
-    path: /etc/httpd/conf/httpd.conf
-  register: httpd_conf_stat
+    path: "/etc/httpd/conf/httpd.conf"
+  register: __rhel_pre_check_httpd_conf_stat
 
 # 2. httpd.conf が存在する場合のみ後続の取得・退避処理を実行
-- name: httpd設定情報取得および退避ブロック
-  when: httpd_conf_stat.stat.exists
+- name: "Backup and collect httpd configuration evidence"
+  when: __rhel_pre_check_httpd_conf_stat.stat.exists | bool
   block:
-    # 退避先ディレクトリ作成
-    - name: 退避先ディレクトリ作成 
+    - name: "Create evidence directory for patch operations"
       ansible.builtin.file:
-        path: /home/infra/rhel_patch
+        path: "{{ patch_evidence_dir }}"
         state: directory
-        mode: '0755'
+        mode: "0755"
 
     # --- 1. /etc/httpd/conf.modules.d 配下情報取得 ---
-    - name: conf.modules.d 配下のファイル一覧取得
-      ansible.builtin.shell: >
+    # ディレクトリ配下のファイル名一覧を改行区切りでそのまま保存するため shell を使用
+    - name: "List files under conf.modules.d directory"
+      ansible.builtin.shell: >-
         ls -1 /etc/httpd/conf.modules.d
-      register: conf_modules_list
+      register: __rhel_pre_check_conf_modules_list
       changed_when: false
 
-    - name: conf.modules.d 配下の情報保存
+    - name: "Save conf.modules.d file list to evidence file"
       ansible.builtin.copy:
-        content: "{{ conf_modules_list.stdout }}\n"
-        dest: /home/infra/rhel_patch/conf.modules.d_before
-        mode: '0644'
+        content: "{{ __rhel_pre_check_conf_modules_list.stdout }}\n"
+        dest: "{{ patch_evidence_dir }}/conf.modules.d.before"
+        mode: "0644"
 
     # --- 2. /etc/httpd/conf.d 配下情報取得 ---
-    - name: conf.d 配下のファイル一覧取得
-      ansible.builtin.shell: >
+    # ディレクトリ配下のファイル名一覧を改行区切りでそのまま保存するため shell を使用
+    - name: "List files under conf.d directory"
+      ansible.builtin.shell: >-
         ls -1 /etc/httpd/conf.d
-      register: conf_d_list
+      register: __rhel_pre_check_conf_d_list
       changed_when: false
 
-    - name: conf.d 配下の情報保存
+    - name: "Save conf.d file list to evidence file"
       ansible.builtin.copy:
-        content: "{{ conf_d_list.stdout }}\n"
-        dest: /home/infra/rhel_patch/conf.d_before
-        mode: '0644'
+        content: "{{ __rhel_pre_check_conf_d_list.stdout }}\n"
+        dest: "{{ patch_evidence_dir }}/conf.d.before"
+        mode: "0644"
 
     # --- 3. httpd.service 退避 ---
-    - name: httpd.service の存在確認
+    - name: "Check if httpd systemd service file exists"
       ansible.builtin.stat:
-        path: /usr/lib/systemd/system/httpd.service
-      register: httpd_service_stat
+        path: "/usr/lib/systemd/system/httpd.service"
+      register: __rhel_pre_check_httpd_service_stat
 
-    - name: httpd.service 退避 (コピー)
+    - name: "Backup original httpd systemd service file"
       ansible.builtin.copy:
-        src: /usr/lib/systemd/system/httpd.service
-        dest: /home/infra/rhel_patch/httpd.service_before
+        src: "/usr/lib/systemd/system/httpd.service"
+        dest: "{{ patch_evidence_dir }}/httpd.service.before"
         remote_src: true
-        mode: 'preserve'
-      when: httpd_service_stat.stat.exists
+        mode: preserve
+      when: __rhel_pre_check_httpd_service_stat.stat.exists | bool
 
-- name: httpd未導入時のスキップログ表示
+- name: "Display skip message when httpd is not installed"
   ansible.builtin.debug:
-    msg: "/etc/httpd/conf/httpd.conf が存在しないため、httpd関連の退避・取得処理をスキップしました。"
-  when: not httpd_conf_stat.stat.exists
-
+    msg: "httpd is not installed (/etc/httpd/conf/httpd.conf not found). Skipping httpd backup tasks."
+  when: not (__rhel_pre_check_httpd_conf_stat.stat.exists | bool)

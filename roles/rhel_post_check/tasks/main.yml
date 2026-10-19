@@ -11,3 +11,6 @@
 
 - name: httpd設定リストア
   ansible.builtin.include_tasks: restore_httpd_conf.yml
+
+- name: postgresqlリンク設定リストア
+  ansible.builtin.include_tasks: restore_postgresql_link.yml

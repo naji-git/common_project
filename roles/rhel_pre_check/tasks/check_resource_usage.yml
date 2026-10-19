@@ -82,25 +82,25 @@
     msg:
       - "=== CPU ==="
       - "使用率: '{{ __rhel_pre_check_current_cpu_usage.stdout | trim }}'"
-      - "閾値  : '{{ threshold_cpu_usage }}'"
+      - "閾値  : '{{ rhel_pre_check_threshold_cpu_usage }}'"
       - "=== Memory ==="
       - "使用率: '{{ __rhel_pre_check_current_mem_usage.stdout | trim }}'"
-      - "閾値  : '{{ threshold_mem_usage }}'"
+      - "閾値  : '{{ rhel_pre_check_threshold_mem_usage }}'"
       - "=== Disk(/の使用率) ==="
       - "使用率: '{{ __rhel_pre_check_current_disk_usage.stdout | trim }}'"
-      - "閾値  : '{{ threshold_disk_usage }}'"
+      - "閾値  : '{{ rhel_pre_check_threshold_disk_usage }}'"
 
 - name: "Verify resource usage is within thresholds"
   ansible.builtin.assert:
     that:
-      - (__rhel_pre_check_current_cpu_usage.stdout | trim | float) <= (threshold_cpu_usage | float)
-      - (__rhel_pre_check_current_mem_usage.stdout | trim | float) <= (threshold_mem_usage | float)
-      - (__rhel_pre_check_current_disk_usage.stdout | trim | float) <= (threshold_disk_usage | float)
+      - (__rhel_pre_check_current_cpu_usage.stdout | trim | float) <= (rhel_pre_check_threshold_cpu_usage | float)
+      - (__rhel_pre_check_current_mem_usage.stdout | trim | float) <= (rhel_pre_check_threshold_mem_usage | float)
+      - (__rhel_pre_check_current_disk_usage.stdout | trim | float) <= (rhel_pre_check_threshold_disk_usage | float)
     fail_msg: >-
       リソース使用率が許容閾値を超過しています。高負荷プロセスを停止またはリソースを増強してから再実行してください。
-      (CPU: {{ __rhel_pre_check_current_cpu_usage.stdout | trim }}%/閾値: {{ threshold_cpu_usage }}%,
-      MEM: {{ __rhel_pre_check_current_mem_usage.stdout | trim }}%/閾値: {{ threshold_mem_usage }}%,
-      DISK: {{ __rhel_pre_check_current_disk_usage.stdout | trim }}%/閾値: {{ threshold_disk_usage }}%)
+      (CPU: {{ __rhel_pre_check_current_cpu_usage.stdout | trim }}%/閾値: {{ rhel_pre_check_threshold_cpu_usage }}%,
+      MEM: {{ __rhel_pre_check_current_mem_usage.stdout | trim }}%/閾値: {{ rhel_pre_check_threshold_mem_usage }}%,
+      DISK: {{ __rhel_pre_check_current_disk_usage.stdout | trim }}%/閾値: {{ rhel_pre_check_threshold_disk_usage }}%)
     success_msg: "すべてのリソース使用率が正常範囲内です。"
 
 # ==================================================

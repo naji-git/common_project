@@ -58,7 +58,7 @@
       block:
         - name: "Set link restore backup directory path"
           ansible.builtin.set_fact:
-            __rhel_post_check_link_backup_dir: "/work/{{ ansible_facts['date_time']['date'] | replace('-', '') }}_linkrestore"
+            __rhel_post_check_link_backup_dir: "/home/infra/rhel_patch/{{ ansible_facts['date_time']['date'] | replace('-', '') }}_linkrestore"
 
         - name: "Create backup directory for modified PostgreSQL binaries"
           ansible.builtin.file:
@@ -79,8 +79,8 @@
                 with open(before_file, 'r') as f:
                     for line in f:
                         line = line.strip()
-                        # "lrwxrwxrwx ... /bin/psql -> /etc/alternatives/pgsql-psql" 形式を解析
-                        if "->" in line and line.startswith('l'):
+                        # 行内に "->" が含まれるものをリンク定義として検出
+                        if "->" in line:
                             parts = line.split("->")
                             src_path = parts[0].strip().split()[-1]
                             target_path = parts[1].strip()
@@ -121,6 +121,7 @@
             dest: "/bin/{{ item.name }}"
             state: link
             force: true
+            follow: false
           loop: "{{ __rhel_post_check_target_links }}"
 
         # --------------------------------------------------
@@ -158,10 +159,14 @@
             dest: "{{ patch_evidence_dir }}/pg_link_usr_restore"
             mode: "0644"
 
-        # 事前エビデンスとの最終差分突合 (/bin)
+        # 日時・サイズメタデータを除外してリンク構造（パス -> リンク先）のみを抽出比較するため shell を使用
         - name: "Verify /bin symlinks match pre-check evidence"
           ansible.builtin.shell: >-
-            diff -u {{ patch_evidence_dir }}/pg_link_bin_before {{ patch_evidence_dir }}/pg_link_bin_restore || true
+            diff -u
+            <(grep ' -> ' {{ patch_evidence_dir }}/pg_link_bin_before | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}')
+            <(grep ' -> ' {{ patch_evidence_dir }}/pg_link_bin_restore | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}') || true
+          args:
+            executable: /bin/bash
           register: __rhel_post_check_diff_bin_final
           changed_when: false
 
@@ -169,13 +174,17 @@
           ansible.builtin.assert:
             that:
               - __rhel_post_check_diff_bin_final.stdout | trim | length == 0
-            fail_msg: "/bin 配下のシンボリックリンク復旧後に差分が残っています。エビデンスファイルを確認してください。"
+            fail_msg: "/bin 配下のシンボリックリンク復旧後に構造上の差分が残っています。エビデンスファイルを確認してください。"
             success_msg: "/bin 配下のシンボリックリンクは事前状態へ正常に復旧されました。"
 
-        # 事前エビデンスとの最終差分突合 (/usr/bin)
+        # 日時・サイズメタデータを除外してリンク構造（パス -> リンク先）のみを抽出比較するため shell を使用
         - name: "Verify /usr/bin symlinks match pre-check evidence"
           ansible.builtin.shell: >-
-            diff -u {{ patch_evidence_dir }}/pg_link_usr_before {{ patch_evidence_dir }}/pg_link_usr_restore || true
+            diff -u
+            <(grep ' -> ' {{ patch_evidence_dir }}/pg_link_usr_before | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}')
+            <(grep ' -> ' {{ patch_evidence_dir }}/pg_link_usr_restore | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}') || true
+          args:
+            executable: /bin/bash
           register: __rhel_post_check_diff_usr_final
           changed_when: false
 
@@ -183,7 +192,7 @@
           ansible.builtin.assert:
             that:
               - __rhel_post_check_diff_usr_final.stdout | trim | length == 0
-            fail_msg: "/usr/bin 配下のシンボリックリンクに差分があります。エビデンスファイルを確認してください。"
+            fail_msg: "/usr/bin 配下のシンボリックリンクに構造上の差分があります。エビデンスファイルを確認してください。"
             success_msg: "/usr/bin 配下のシンボリックリンクは事前状態と一致しています。"
 
 - name: "Display skip message when PostgreSQL is not installed"

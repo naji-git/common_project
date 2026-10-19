@@ -1,142 +1,153 @@
 ---
 # 1. httpd.conf の存在確認（存在しない場合は作業不要の判定）
-- name: httpd.conf 存在確認
+- name: "Check if httpd configuration file exists"
   ansible.builtin.stat:
-    path: /etc/httpd/conf/httpd.conf
-  register: httpd_conf_stat
+    path: "/etc/httpd/conf/httpd.conf"
+  register: __rhel_post_check_httpd_conf_stat
 
 # 2. httpd.conf が存在する場合のみ後続の取得・退避・復旧処理を実行
-- name: httpd設定情報取得および退避・復旧ブロック
-  when: httpd_conf_stat.stat.exists
+- name: "Restore httpd configuration and verify service state"
+  when: __rhel_post_check_httpd_conf_stat.stat.exists | bool
   block:
-    # 退避先ディレクトリ作成
-    - name: 退避先ディレクトリ作成
+    - name: "Create evidence directory for patch operations"
       ansible.builtin.file:
-        path: /home/infra/rhel_patch
+        path: "{{ patch_evidence_dir }}"
         state: directory
-        mode: '0755'
+        mode: "0755"
 
     # --- 1. /etc/httpd/conf.modules.d 配下情報取得 ---
-    - name: conf.modules.d 配下のファイル一覧取得
-      ansible.builtin.shell: >
+    # ディレクトリ配下のファイル一覧を改行区切りでそのまま保存するため shell を使用
+    - name: "List files under conf.modules.d directory after patch"
+      ansible.builtin.shell: >-
         ls -1 /etc/httpd/conf.modules.d
-      register: conf_modules_list
+      register: __rhel_post_check_conf_modules_list
       changed_when: false
 
-    - name: conf.modules.d 配下の情報保存
+    - name: "Save conf.modules.d file list to evidence file"
       ansible.builtin.copy:
-        content: "{{ conf_modules_list.stdout }}\n"
-        dest: /home/infra/rhel_patch/conf.modules.d_after
-        mode: '0644'
+        content: "{{ __rhel_post_check_conf_modules_list.stdout }}\n"
+        dest: "{{ patch_evidence_dir }}/conf.modules.d.after"
+        mode: "0644"
 
     # --- 2. /etc/httpd/conf.d 配下情報取得 ---
-    - name: conf.d 配下のファイル一覧取得
-      ansible.builtin.shell: >
+    # ディレクトリ配下のファイル一覧を改行区切りでそのまま保存するため shell を使用
+    - name: "List files under conf.d directory after patch"
+      ansible.builtin.shell: >-
         ls -1 /etc/httpd/conf.d
-      register: conf_d_list
+      register: __rhel_post_check_conf_d_list
       changed_when: false
 
-    - name: conf.d 配下の情報保存
+    - name: "Save conf.d file list to evidence file"
       ansible.builtin.copy:
-        content: "{{ conf_d_list.stdout }}\n"
-        dest: /home/infra/rhel_patch/conf.d_after
-        mode: '0644'
+        content: "{{ __rhel_post_check_conf_d_list.stdout }}\n"
+        dest: "{{ patch_evidence_dir }}/conf.d.after"
+        mode: "0644"
 
     # --- 3. httpd.service 退避 ---
-    - name: httpd.service の存在確認
+    - name: "Check if httpd systemd service file exists"
       ansible.builtin.stat:
-        path: /usr/lib/systemd/system/httpd.service
-      register: httpd_service_stat
+        path: "/usr/lib/systemd/system/httpd.service"
+      register: __rhel_post_check_httpd_service_stat
 
-    - name: httpd.service 退避 (コピー)
+    - name: "Backup post-patch httpd systemd service file"
       ansible.builtin.copy:
-        src: /usr/lib/systemd/system/httpd.service
-        dest: /home/infra/rhel_patch/httpd.service_after
+        src: "/usr/lib/systemd/system/httpd.service"
+        dest: "{{ patch_evidence_dir }}/httpd.service.after"
         remote_src: true
-        mode: 'preserve'
-      when: httpd_service_stat.stat.exists
+        mode: preserve
+      when: __rhel_post_check_httpd_service_stat.stat.exists | bool
 
-# ==================================================
+    # ==================================================
     # 差分比較・余剰ファイル移動・設定およびサービス復旧
     # ==================================================
 
     # --- 4. conf.modules.d 比較と余剰ファイル退避 ---
-    - name: conf.modules.d 事後新規追加ファイルの検知
-      ansible.builtin.shell: >
-        diff -u /home/infra/rhel_patch/conf.modules.d_before /home/infra/rhel_patch/conf.modules.d_after | grep -E '^\+[^+]' | sed 's/^+//' || true
-      register: added_modules_files
+    # 事前・事後一覧の差分から新規追加分のみを抽出するため diff, grep, sed を組み合わせた shell を使用
+    - name: "Detect added configuration files in conf.modules.d"
+      ansible.builtin.shell: >-
+        diff -u {{ patch_evidence_dir }}/conf.modules.d.before {{ patch_evidence_dir }}/conf.modules.d.after | grep -E '^\+[^+]' | sed 's/^+//' || true
+      register: __rhel_post_check_added_modules_files
       changed_when: false
 
-    - name: conf.modules.d 余剰ファイルの退避 (/home/infra/rhel_patch へ移動)
-      ansible.builtin.command: "mv /etc/httpd/conf.modules.d/{{ item }} /home/infra/rhel_patch/"
-      loop: "{{ added_modules_files.stdout_lines }}"
-      when: added_modules_files.stdout_lines | length > 0
+    # 差分として検知された余剰ファイルを退避ディレクトリに移動するため command を使用
+    - name: "Move added files in conf.modules.d to evidence directory"
+      ansible.builtin.command: "mv /etc/httpd/conf.modules.d/{{ item }} {{ patch_evidence_dir }}/"
+      loop: "{{ __rhel_post_check_added_modules_files.stdout_lines }}"
+      when: __rhel_post_check_added_modules_files.stdout_lines | length > 0
 
-    - name: conf.modules.d 移動後の状態再取得
-      ansible.builtin.shell: "ls -1 /etc/httpd/conf.modules.d > /home/infra/rhel_patch/conf.modules.d_after_mv"
+    # 余剰ファイル移動後のディレクトリ状態を再取得・保存するためリダイレクトを含む shell を使用
+    - name: "Rescan files in conf.modules.d after cleanup"
+      ansible.builtin.shell: "ls -1 /etc/httpd/conf.modules.d > {{ patch_evidence_dir }}/conf.modules.d.after_mv"
       changed_when: false
 
-    - name: conf.modules.d 最終差分確認 (before と after_mv)
-      ansible.builtin.shell: >
-        diff -u /home/infra/rhel_patch/conf.modules.d_before /home/infra/rhel_patch/conf.modules.d_after_mv || true
-      register: diff_modules_final
+    # 移動後状態と事前エビデンスが完全一致しているか検証するため shell を使用
+    - name: "Verify conf.modules.d matches pre-patch state"
+      ansible.builtin.shell: >-
+        diff -u {{ patch_evidence_dir }}/conf.modules.d.before {{ patch_evidence_dir }}/conf.modules.d.after_mv || true
+      register: __rhel_post_check_diff_modules_final
       changed_when: false
-      failed_when: diff_modules_final.stdout | trim | length > 0
+      failed_when: __rhel_post_check_diff_modules_final.stdout | trim | length > 0
 
     # --- 5. conf.d 比較と余剰ファイル退避 ---
-    - name: conf.d 事後新規追加ファイルの検知
-      ansible.builtin.shell: >
-        diff -u /home/infra/rhel_patch/conf.d_before /home/infra/rhel_patch/conf.d_after | grep -E '^\+[^+]' | sed 's/^+//' || true
-      register: added_confd_files
+    # 事前・事後一覧の差分から新規追加分のみを抽出するため diff, grep, sed を組み合わせた shell を使用
+    - name: "Detect added configuration files in conf.d"
+      ansible.builtin.shell: >-
+        diff -u {{ patch_evidence_dir }}/conf.d.before {{ patch_evidence_dir }}/conf.d.after | grep -E '^\+[^+]' | sed 's/^+//' || true
+      register: __rhel_post_check_added_confd_files
       changed_when: false
 
-    - name: conf.d 余剰ファイルの退避 (/home/infra/rhel_patch へ移動)
-      ansible.builtin.command: "mv /etc/httpd/conf.d/{{ item }} /home/infra/rhel_patch/"
-      loop: "{{ added_confd_files.stdout_lines }}"
-      when: added_confd_files.stdout_lines | length > 0
+    # 差分として検知された余剰ファイルを退避ディレクトリに移動するため command を使用
+    - name: "Move added files in conf.d to evidence directory"
+      ansible.builtin.command: "mv /etc/httpd/conf.d/{{ item }} {{ patch_evidence_dir }}/"
+      loop: "{{ __rhel_post_check_added_confd_files.stdout_lines }}"
+      when: __rhel_post_check_added_confd_files.stdout_lines | length > 0
 
-    - name: conf.d 移動後の状態再取得
-      ansible.builtin.shell: "ls -1 /etc/httpd/conf.d > /home/infra/rhel_patch/conf.d_after_mv"
+    # 余剰ファイル移動後のディレクトリ状態を再取得・保存するためリダイレクトを含む shell を使用
+    - name: "Rescan files in conf.d after cleanup"
+      ansible.builtin.shell: "ls -1 /etc/httpd/conf.d > {{ patch_evidence_dir }}/conf.d.after_mv"
       changed_when: false
 
-    - name: conf.d 最終差分確認 (before と after_mv)
-      ansible.builtin.shell: >
-        diff -u /home/infra/rhel_patch/conf.d_before /home/infra/rhel_patch/conf.d_after_mv || true
-      register: diff_confd_final
+    # 移動後状態と事前エビデンスが完全一致しているか検証するため shell を使用
+    - name: "Verify conf.d matches pre-patch state"
+      ansible.builtin.shell: >-
+        diff -u {{ patch_evidence_dir }}/conf.d.before {{ patch_evidence_dir }}/conf.d.after_mv || true
+      register: __rhel_post_check_diff_confd_final
       changed_when: false
-      failed_when: diff_confd_final.stdout | trim | length > 0
+      failed_when: __rhel_post_check_diff_confd_final.stdout | trim | length > 0
 
     # --- 6. httpd.service の復旧 ---
-    - name: httpd.service のリストア (before を配置)
+    - name: "Restore pre-patch httpd systemd service file"
       ansible.builtin.copy:
-        src: /home/infra/rhel_patch/httpd.service_before
-        dest: /usr/lib/systemd/system/httpd.service
+        src: "{{ patch_evidence_dir }}/httpd.service.before"
+        dest: "/usr/lib/systemd/system/httpd.service"
         remote_src: true
-        mode: '0644'
+        mode: "0644"
 
     # --- 7. Apache サービス再読み込みと起動確認 ---
-    - name: systemd デーモンの再読み込み (daemon-reload)
+    - name: "Reload systemd daemon configuration"
       ansible.builtin.systemd:
         daemon_reload: true
 
-    - name: 起動前の httpd サービス状態確認
-      ansible.builtin.command: systemctl status httpd.service
-      register: httpd_status_before_start
+    # 起動直前のステータス詳細（ログ出力）を取得するため command を使用
+    - name: "Check httpd service status before starting"
+      ansible.builtin.command: "systemctl status httpd.service"
+      register: __rhel_post_check_httpd_status_before_start
       failed_when: false
       changed_when: false
 
-    - name: httpd サービスの起動
+    - name: "Ensure httpd service is started"
       ansible.builtin.systemd:
-        name: httpd
+        name: "httpd"
         state: started
 
-    - name: 起動後の httpd サービス状態確認
-      ansible.builtin.command: systemctl status httpd.service
-      register: httpd_status_after_start
+    # 起動直後のステータス詳細（アクティブ状態確認）を取得するため command を使用
+    - name: "Verify httpd service is active after start"
+      ansible.builtin.command: "systemctl status httpd.service"
+      register: __rhel_post_check_httpd_status_after_start
       changed_when: false
 
 # 3. httpd 未導入時のログ表示
-- name: httpd未導入時のスキップログ表示
+- name: "Display skip message when httpd is not installed"
   ansible.builtin.debug:
-    msg: "/etc/httpd/conf/httpd.conf が存在しないため、httpd関連の退避・取得処理をスキップしました。"
-  when: not httpd_conf_stat.stat.exists
+    msg: "httpd is not installed (/etc/httpd/conf/httpd.conf not found). Skipping httpd restore tasks."
+  when: not (__rhel_post_check_httpd_conf_stat.stat.exists | bool)

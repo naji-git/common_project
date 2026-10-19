@@ -2,36 +2,38 @@
 # --------------------------------------------------
 # 1. パッケージ一覧取得 (rpm -qa | sort -n)
 # --------------------------------------------------
-- name: パッケージ一覧取得 (rpm -qa | sort -n)
-  ansible.builtin.shell: >
+# RPMパッケージ一覧をバージョン順にソートして一括抽出するためパイプを伴う shell を使用
+- name: "Retrieve sorted list of installed RPM packages after patch"
+  ansible.builtin.shell: >-
     rpm -qa | sort -n
-  register: rpm_qa_result
+  register: __rhel_post_check_rpm_qa_result
   changed_when: false
 
-- name: パッケージ一覧結果保存 (rpm_qa_after)
+- name: "Save RPM package list to evidence file"
   ansible.builtin.copy:
-    content: "{{ rpm_qa_result.stdout }}\n"
+    content: "{{ __rhel_post_check_rpm_qa_result.stdout }}\n"
     dest: "{{ patch_evidence_dir }}/rpm_qa_after"
-    mode: '0644'
+    mode: "0644"
 
 # --------------------------------------------------
 # 2. 事前・事後パッケージ差分確認 (変更行のみ抽出)
 # --------------------------------------------------
-- name: パッケージ一覧の差分確認 (更新対象のみ)
-  ansible.builtin.shell: >
+# 事前事後エビデンスの diff 結果から変更対象行のみをパイプと正規表現で抽出するため shell を使用
+- name: "Compare pre and post patch RPM package lists"
+  ansible.builtin.shell: >-
     diff -u {{ patch_evidence_dir }}/rpm_qa_before {{ patch_evidence_dir }}/rpm_qa_after | grep -E '^[+-][^+-]' || true
-  register: rpm_qa_diff
+  register: __rhel_post_check_rpm_qa_diff
   changed_when: false
 
-- name: 差分結果の退避保存 (rpm_qa_diff)
+- name: "Save RPM package diff to evidence file"
   ansible.builtin.copy:
-    content: "{{ rpm_qa_diff.stdout }}\n"
+    content: "{{ __rhel_post_check_rpm_qa_diff.stdout }}\n"
     dest: "{{ patch_evidence_dir }}/rpm_qa_diff"
-    mode: '0644'
+    mode: "0644"
 
-- name: パッケージ更新差分の表示
+- name: "Display RPM package differences"
   ansible.builtin.debug:
     msg:
       - "==================== [更新されたパッケージ] ===================="
-      - "{{ '差分なし (パッケージ変更はありません)' if rpm_qa_diff.stdout | trim | length == 0 else rpm_qa_diff.stdout_lines }}"
+      - "{{ '差分なし (パッケージ変更はありません)' if __rhel_post_check_rpm_qa_diff.stdout | trim | length == 0 else __rhel_post_check_rpm_qa_diff.stdout_lines }}"
       - "================================================================"

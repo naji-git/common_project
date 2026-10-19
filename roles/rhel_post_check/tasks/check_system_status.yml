@@ -1,55 +1,60 @@
-- name: プロセス状態確認
-  ansible.builtin.command: /usr/local/sam/kanshi/shell/sk_proc_dsp.sh
-  register: process_status
+---
+# 専用モジュールが存在しないカスタム監視シェルの実行のため command を使用
+- name: "Execute custom process monitoring script"
+  ansible.builtin.command: "/usr/local/sam/kanshi/shell/sk_proc_dsp.sh"
+  register: __rhel_post_check_process_status
   changed_when: false
 
-- name: プロセス状態確認結果保存
+- name: "Save process status result to evidence file"
   ansible.builtin.copy:
-    content: "{{ process_status.stdout }}\n"
+    content: "{{ __rhel_post_check_process_status.stdout }}\n"
     dest: "{{ patch_evidence_dir }}/process_status_after"
-    mode: '0644'
+    mode: "0644"
 
-- name: カーネルバージョン確認
-  command: uname -r
-  register: kernel_version
+# 稼働中カーネルのリリースタグを取得するため command を使用
+- name: "Get running kernel release after patch"
+  ansible.builtin.command: "uname -r"
+  register: __rhel_post_check_kernel_version
   changed_when: false
 
-- name: カーネルバージョン結果保存
-  copy:
-    content: "{{ kernel_version.stdout }}\n"
+- name: "Save kernel version result to evidence file"
+  ansible.builtin.copy:
+    content: "{{ __rhel_post_check_kernel_version.stdout }}\n"
     dest: "{{ patch_evidence_dir }}/kernel_version_after"
-    mode: '0644'
+    mode: "0644"
 
-- name: サービス自動起動設定確認
-  shell: >
+# systemd ユニット一覧の取得と正規表現による除外フィルタ処理をパイプで行うため shell を使用
+- name: "Get enabled systemd unit files after patch"
+  ansible.builtin.shell: >-
     systemctl list-unit-files | grep -Ev '\.(scope|slice)'
-  register: unit_files
+  register: __rhel_post_check_unit_files
   changed_when: false
 
-- name: サービス自動起動設定結果保存
-  copy:
-    content: "{{ unit_files.stdout }}\n"
+- name: "Save systemd unit files result to evidence file"
+  ansible.builtin.copy:
+    content: "{{ __rhel_post_check_unit_files.stdout }}\n"
     dest: "{{ patch_evidence_dir }}/unit-files_after"
-    mode: '0644'
+    mode: "0644"
 
-- name: Javaディレクトリ存在確認
+- name: "Check if JVM directory exists"
   ansible.builtin.stat:
-    path: /usr/lib/jvm
-  register: jvm_dir
+    path: "/usr/lib/jvm"
+  register: __rhel_post_check_jvm_dir
 
-- name: Java関連ファイル確認・保存ブロック
-  when: jvm_dir.stat.exists
+- name: "Process and save Java directory information after patch"
+  when: __rhel_post_check_jvm_dir.stat.exists | bool
   block:
-    - name: Java関連ファイル確認
-      ansible.builtin.command: ls -l /usr/lib/jvm
-      register: java_info
+    # ディレクトリ配下の詳細一覧（リンク先を含む）をエビデンス化するため command を使用
+    - name: "List Java installation directory contents after patch"
+      ansible.builtin.command: "ls -l /usr/lib/jvm"
+      register: __rhel_post_check_java_info
       changed_when: false
 
-    - name: Java関連ファイル結果保存
+    - name: "Save Java directory contents to evidence file"
       ansible.builtin.copy:
-        content: "{{ java_info.stdout }}\n"
+        content: "{{ __rhel_post_check_java_info.stdout }}\n"
         dest: "{{ patch_evidence_dir }}/java_info_after"
-        mode: '0644'
+        mode: "0644"
 
 # ==================================================
 # 作業前後での比較処理
@@ -58,56 +63,59 @@
 # --------------------------------------------------
 # 1. Java 情報の比較・表示
 # --------------------------------------------------
-- name: 事前Javaファイルからバージョン文字列を抽出
-  ansible.builtin.shell: >
+# エビデンスファイルから正規表現で Java バージョン文字列を抽出するためパイプを伴う shell を使用
+- name: "Extract Java version string from pre-check evidence"
+  ansible.builtin.shell: >-
     grep -E 'java-[0-9].*el[0-9]' {{ patch_evidence_dir }}/java_info_before 2>/dev/null |
     awk '{print $NF}' | head -n 1
-  register: java_ver_before_cmd
+  register: __rhel_post_check_java_ver_before_cmd
   failed_when: false
   changed_when: false
 
-- name: 事後Javaファイルからバージョン文字列を抽出
-  ansible.builtin.shell: >
+# エビデンスファイルから正規表現で Java バージョン文字列を抽出するためパイプを伴う shell を使用
+- name: "Extract Java version string from post-check evidence"
+  ansible.builtin.shell: >-
     grep -E 'java-[0-9].*el[0-9]' {{ patch_evidence_dir }}/java_info_after 2>/dev/null |
     awk '{print $NF}' | head -n 1
-  register: java_ver_after_cmd
+  register: __rhel_post_check_java_ver_after_cmd
   failed_when: false
   changed_when: false
 
-- name: 変数へ格納
+- name: "Set extracted Java version variables"
   ansible.builtin.set_fact:
-    java_ver_before: "{{ (java_ver_before_cmd.stdout | trim) if (java_ver_before_cmd.stdout | trim | length > 0) else '事前ファイルなし または 未特定' }}"
-    java_ver_after: "{{ (java_ver_after_cmd.stdout | trim) if (java_ver_after_cmd.stdout | trim | length > 0) else 'Java未検出' }}"
+    __rhel_post_check_java_ver_before: "{{ (__rhel_post_check_java_ver_before_cmd.stdout | trim) if (__rhel_post_check_java_ver_before_cmd.stdout | trim | length > 0) else '事前ファイルなし または 未特定' }}"
+    __rhel_post_check_java_ver_after: "{{ (__rhel_post_check_java_ver_after_cmd.stdout | trim) if (__rhel_post_check_java_ver_after_cmd.stdout | trim | length > 0) else 'Java未検出' }}"
 
-- name: Java バージョン比較結果表示
+- name: "Display Java version comparison result"
   ansible.builtin.debug:
     msg:
       - "=== Java バージョン比較 ==="
-      - "作業前: {{ java_ver_before }}"
-      - "作業後: {{ java_ver_after }}"
-      - "変更有無: {{ '変更あり (バージョンアップ検知)' if (java_ver_before != java_ver_after and java_ver_before != '事前ファイルなし または 未特定') else '変更なし' }}"
+      - "作業前: {{ __rhel_post_check_java_ver_before }}"
+      - "作業後: {{ __rhel_post_check_java_ver_after }}"
+      - "変更有無: {{ '変更あり (バージョンアップ検知)' if (__rhel_post_check_java_ver_before != __rhel_post_check_java_ver_after and __rhel_post_check_java_ver_before != '事前ファイルなし または 未特定') else '変更なし' }}"
 
 # --------------------------------------------------
 # 2. カーネルバージョンの比較・表示
 # --------------------------------------------------
-- name: 事前カーネルバージョンの読み込み
+- name: "Read pre-check kernel version evidence"
   ansible.builtin.slurp:
     src: "{{ patch_evidence_dir }}/kernel_version_before"
-  register: kernel_before_b64
+  register: __rhel_post_check_kernel_before_b64
   ignore_errors: true
 
-- name: カーネルバージョン比較結果表示
+- name: "Display kernel version comparison result"
   ansible.builtin.debug:
     msg:
       - "=== Kernel Version 比較 ==="
-      - "作業前: {{ (kernel_before_b64.content | b64decode | trim) if (kernel_before_b64 is succeeded) else '取得失敗またはファイルなし' }}"
-      - "作業後: {{ kernel_version.stdout | trim }}"
-      - "変更有無: {{ '変更あり (アップデート・再起動検知)' if (kernel_before_b64 is succeeded and (kernel_before_b64.content | b64decode | trim) != (kernel_version.stdout | trim)) else '変更なし' }}"
+      - "作業前: {{ (__rhel_post_check_kernel_before_b64.content | b64decode | trim) if (__rhel_post_check_kernel_before_b64 is succeeded) else '取得失敗またはファイルなし' }}"
+      - "作業後: {{ __rhel_post_check_kernel_version.stdout | trim }}"
+      - "変更有無: {{ '変更あり (アップデート・再起動検知)' if (__rhel_post_check_kernel_before_b64 is succeeded and (__rhel_post_check_kernel_before_b64.content | b64decode | trim) != (__rhel_post_check_kernel_version.stdout | trim)) else '変更なし' }}"
 
 # --------------------------------------------------
 # 3. サービス自動起動設定（unit-files）の差分抽出・表示
 # --------------------------------------------------
-- name: サービス自動起動設定の差分解析
+# 複数列のユニット定義リストを突合・構造化解析するためインライン Python スクリプトを実行
+- name: "Analyze unit-files difference between pre and post check"
   ansible.builtin.shell: |
     python3 - << 'EOF'
     import sys
@@ -121,12 +129,10 @@
             with open(filepath, 'r') as f:
                 for line in f:
                     line_str = line.strip()
-                    # フッター（"xxx unit files listed."）や空行、ヘッダー行を除外
                     if not line_str or 'unit files listed' in line_str or line_str.startswith('UNIT FILE'):
                         continue
 
                     parts = line_str.split()
-                    # ユニット名と状態（最低2列以上）があり、ユニット名が英数字等で終わるものを対象
                     if len(parts) >= 2 and '.' in parts[0]:
                         unit_name = parts[0]
                         status = " ".join(parts[1:])
@@ -142,7 +148,6 @@
     added = []
     removed = []
 
-    # 変更および削除の検出
     for unit, b_stat in before.items():
         if unit in after:
             if b_stat != after[unit]:
@@ -150,7 +155,6 @@
         else:
             removed.append(f"【削除】 {unit} (作業前の状態: {b_stat})")
 
-    # 新規追加の検出
     for unit, a_stat in after.items():
         if unit not in before:
             added.append(f"【新規追加】 {unit}: [状態] {a_stat}")
@@ -168,17 +172,18 @@
     else:
         print("差分なし")
     EOF
-  register: unit_files_diff
+  register: __rhel_post_check_unit_files_diff
   changed_when: false
 
-- name: サービス自動起動設定 差分結果表示
+- name: "Display unit-files difference result"
   ansible.builtin.debug:
-    msg: "{{ unit_files_diff.stdout_lines }}"
+    msg: "{{ __rhel_post_check_unit_files_diff.stdout_lines }}"
 
 # --------------------------------------------------
 # 4. プロセス状態（sk_proc_dsp.sh）の比較・表示
 # --------------------------------------------------
-- name: プロセス状態の判定比較 (事前:N -> 事後:N以外 を検知)
+# 独自フォーマットのプロセス状態エビデンスを突合し非N状態を検出するためインライン Python スクリプトを実行
+- name: "Analyze process status difference for abnormal states"
   ansible.builtin.shell: |
     python3 - << 'EOF'
     import sys
@@ -189,8 +194,6 @@
 
     def parse_proc_file(filepath):
         data = {}
-        # 例: "DEV-REHL9-01 : [N][ 1 / 1 ]   /sbin/rsyslogd"
-        # [N] や [C] のステータスと、行末のプロセス名を抽出
         pattern = re.compile(r'\[([A-Z])\]\s*\[.*?\]\s+(\S+)$')
         try:
             with open(filepath, 'r') as f:
@@ -200,8 +203,8 @@
                         continue
                     m = pattern.search(line_str)
                     if m:
-                        status = m.group(1)       # 'N', 'C', など
-                        service_name = m.group(2) # '/sbin/rsyslogd'
+                        status = m.group(1)
+                        service_name = m.group(2)
                         data[service_name] = status
         except Exception:
             pass
@@ -212,7 +215,6 @@
 
     not_n_services = []
 
-    # 作業前にステータスが 'N' だったサービスを対象にチェック
     for service, b_stat in before.items():
         if b_stat == 'N':
             a_stat = after.get(service, '未検出/停止')
@@ -224,12 +226,12 @@
     else:
         print("正常 (事前でNのサービスはすべて事後もNです)")
     EOF
-  register: process_status_check
+  register: __rhel_post_check_process_status_check
   changed_when: false
 
-- name: プロセス状態 判定結果表示
+- name: "Display process status check result"
   ansible.builtin.debug:
     msg:
       - "==================== [プロセス状態判定結果] ===================="
-      - "{{ process_status_check.stdout_lines }}"
+      - "{{ __rhel_post_check_process_status_check.stdout_lines }}"
       - "================================================================"

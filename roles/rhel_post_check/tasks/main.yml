@@ -1,19 +1,19 @@
 ---
 # roles/rhel_post_check/tasks/main.yml
-- name: 事後リソース使用状況の確認
+- name: "Include post-patch resource usage check tasks"
   ansible.builtin.include_tasks: check_resource_usage.yml
 
-- name: 事後システム状態の確認
+- name: "Include post-patch system status check tasks"
   ansible.builtin.include_tasks: check_system_status.yml
 
-- name: 事後パッケージ情報の取得
+- name: "Include post-patch package information collection tasks"
   ansible.builtin.include_tasks: check_package_info.yml
 
-- name: httpd設定リストア
+- name: "Include httpd configuration restore tasks"
   ansible.builtin.include_tasks: restore_httpd_conf.yml
 
-- name: postgresqlリンク設定リストア
+- name: "Include PostgreSQL symlink restore tasks"
   ansible.builtin.include_tasks: restore_postgresql_link.yml
-  
-  - name: "事後のステータス確認(SAM監視、JP1、EDR、監視抑止ファイル)"
+
+- name: "Include post-patch agent status verification tasks"
   ansible.builtin.include_tasks: check_agent_status.yml

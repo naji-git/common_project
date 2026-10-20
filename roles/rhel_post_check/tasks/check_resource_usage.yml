@@ -97,4 +97,4 @@
       (CPU: {{ __rhel_post_check_current_cpu_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_cpu_usage | default(95) }}%,
       MEM: {{ __rhel_post_check_current_mem_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_mem_usage | default(95) }}%,
       DISK: {{ __rhel_post_check_current_disk_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_disk_usage | default(90) }}%)
-    success_msg: "すべての事後リソース使用率が正常範囲内です。"
+    success_msg: "すべての事後リソースの使用率が正常範囲内です。"

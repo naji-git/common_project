@@ -210,7 +210,7 @@
     state: absent
   loop: "{{ __rhel_post_check_disable_files.files | default([]) }}"
   when:
-    - (item.mtime | strftime('%Y-%m-%d', ansible_facts['date_time']['epoch'])) == __rhel_post_check_today_hyphen
+    - ('%Y-%m-%d' | strftime(item.mtime)) == __rhel_post_check_today_hyphen
   register: __rhel_post_check_removed_disable_files
   ignore_errors: true
 

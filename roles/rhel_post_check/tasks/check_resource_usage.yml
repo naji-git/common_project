@@ -5,17 +5,21 @@
     state: directory
     mode: "0755"
 
+# ==================================================
+# 事後リソース使用状況の確認
+# ==================================================
+
 # --------------------------------------------------
 # 1. CPU使用率確認 & 閾値チェック
 # --------------------------------------------------
-# sar コマンドの出力から現行CPU使用率を即座に算出する標準モジュールが存在しないため shell を使用
+# 突発的なスパイクを排除するため 1秒×3回サンプリングの平均値 (Average) から現行CPU使用率を算出
 - name: "Check current CPU usage after patch"
   ansible.builtin.shell: >-
-    LANG=C sar -u 1 1 | awk 'END {printf "%.0f", 100 - $NF}'
+    LANG=C sar -u 1 3 | awk '/Average:/ {printf "%.0f", 100 - $NF}'
   register: __rhel_post_check_current_cpu_usage
   changed_when: false
 
-# 過去ログを含めた sar 全体出力をエビデンス化するため command を使用
+# 過去ログを含めた sar 全体出力をエビデンス化
 - name: "Get sar CPU usage logs after patch"
   ansible.builtin.command: sar -u
   register: __rhel_post_check_cpu_usage
@@ -30,19 +34,16 @@
 # --------------------------------------------------
 # 2. メモリ使用率確認 & 閾値チェック
 # --------------------------------------------------
-# sar コマンドの出力から現行メモリ使用率を取得する標準モジュールが存在しないため shell を使用
+# 突発的なスパイクを排除するため 1秒×3回サンプリングの平均値 (Average) から現行メモリ使用率を算出
 - name: "Check current memory usage after patch"
   ansible.builtin.shell: >-
-    LANG=C sar -r 1 1 | awk '/Average:/ {printf "%.0f", $5}'
+    LANG=C sar -r 1 3 | awk '/Average:/ {printf "%.0f", $5}'
   register: __rhel_post_check_current_mem_usage
   changed_when: false
 
-# メモリ使用率の整形ログをエビデンス化するためパイプ処理を伴う shell を使用
-- name: "Get formatted memory usage logs after patch"
-  ansible.builtin.shell: >-
-    LANG=C; sar -r 1 1 |
-    grep -vE "Linux|kbmemfree|^$|Average" |
-    awk '{print $1, $5}'
+# 当日の sar メモリログ全体をエビデンス化（CPUの sar -u と粒度を統一）
+- name: "Get sar memory usage logs after patch"
+  ansible.builtin.command: sar -r
   register: __rhel_post_check_mem_usage
   changed_when: false
 
@@ -55,14 +56,14 @@
 # --------------------------------------------------
 # 3. ディスク使用率確認 & 閾値チェック (/ 使用率)
 # --------------------------------------------------
-# ルートパーティションの使用率数値(%)を直接抽出するため shell を使用
+# ルートパーティションの使用率数値(%)を直接抽出
 - name: "Check current root partition disk usage after patch"
   ansible.builtin.shell: >-
     df -h / | awk 'NR==2 {gsub("%",""); print $5}'
   register: __rhel_post_check_current_disk_usage
   changed_when: false
 
-# システム全体のディスク構成・使用状況をエビデンス化するため command を使用
+# システム全体のディスク構成・使用状況をエビデンス化
 - name: "Get entire disk usage logs after patch"
   ansible.builtin.command: df -h
   register: __rhel_post_check_disk_usage
@@ -75,30 +76,25 @@
     mode: "0644"
 
 # --------------------------------------------------
-# 4. 全チェック完了後の総合判定
+# 4. 全チェック完了後のサマリ表示 & 総合判定
 # --------------------------------------------------
 - name: "Display gathered resource usage after patch"
   ansible.builtin.debug:
     msg:
-      - "=== CPU ==="
-      - "使用率: '{{ __rhel_post_check_current_cpu_usage.stdout | trim }}'"
-      - "閾値  : '{{ rhel_post_check_threshold_cpu_usage }}'"
-      - "=== Memory ==="
-      - "使用率: '{{ __rhel_post_check_current_mem_usage.stdout | trim }}'"
-      - "閾値  : '{{ rhel_post_check_threshold_mem_usage }}'"
-      - "=== Disk(/の使用率) ==="
-      - "使用率: '{{ __rhel_post_check_current_disk_usage.stdout | trim }}'"
-      - "閾値  : '{{ rhel_post_check_threshold_disk_usage }}'"
+      - "=== 事後リソース確認結果 ==="
+      - "CPU使用率   : {{ __rhel_post_check_current_cpu_usage.stdout | trim }}% (閾値: {{ rhel_post_check_threshold_cpu_usage | default(95) }}%)"
+      - "メモリ使用率 : {{ __rhel_post_check_current_mem_usage.stdout | trim }}% (閾値: {{ rhel_post_check_threshold_mem_usage | default(95) }}%)"
+      - "ディスク使用率: {{ __rhel_post_check_current_disk_usage.stdout | trim }}% (閾値: {{ rhel_post_check_threshold_disk_usage | default(90) }}%)"
 
 - name: "Verify resource usage is within thresholds after patch"
   ansible.builtin.assert:
     that:
-      - (__rhel_post_check_current_cpu_usage.stdout | trim | float) <= (rhel_post_check_threshold_cpu_usage | float)
-      - (__rhel_post_check_current_mem_usage.stdout | trim | float) <= (rhel_post_check_threshold_mem_usage | float)
-      - (__rhel_post_check_current_disk_usage.stdout | trim | float) <= (rhel_post_check_threshold_disk_usage | float)
+      - (__rhel_post_check_current_cpu_usage.stdout | trim | float) <= (rhel_post_check_threshold_cpu_usage | default(95) | float)
+      - (__rhel_post_check_current_mem_usage.stdout | trim | float) <= (rhel_post_check_threshold_mem_usage | default(95) | float)
+      - (__rhel_post_check_current_disk_usage.stdout | trim | float) <= (rhel_post_check_threshold_disk_usage | default(90) | float)
     fail_msg: >-
       事後リソース使用率が許容閾値を超過しています。パッチ適用後のプロセス状態やリソース状況を確認してください。
-      (CPU: {{ __rhel_post_check_current_cpu_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_cpu_usage }}%,
-      MEM: {{ __rhel_post_check_current_mem_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_mem_usage }}%,
-      DISK: {{ __rhel_post_check_current_disk_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_disk_usage }}%)
+      (CPU: {{ __rhel_post_check_current_cpu_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_cpu_usage | default(95) }}%,
+      MEM: {{ __rhel_post_check_current_mem_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_mem_usage | default(95) }}%,
+      DISK: {{ __rhel_post_check_current_disk_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_disk_usage | default(90) }}%)
     success_msg: "すべての事後リソース使用率が正常範囲内です。"

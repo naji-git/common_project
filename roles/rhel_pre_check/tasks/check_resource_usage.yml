@@ -102,6 +102,19 @@
       - "メモリ使用率 : {{ __rhel_pre_check_current_mem_usage.stdout }}% (閾値: {{ rhel_pre_check_threshold_mem_usage | default(95) }}%)"
       - "ディスク使用率: {{ __rhel_pre_check_current_disk_usage.stdout }}% (閾値: {{ rhel_pre_check_threshold_disk_usage | default(90) }}%)"
 
+- name: "Verify resource usage is within thresholds before patch"
+  ansible.builtin.assert:
+    that:
+      - (__rhel_post_check_current_cpu_usage.stdout | trim | float) <= (rhel_post_check_threshold_cpu_usage | default(95) | float)
+      - (__rhel_post_check_current_mem_usage.stdout | trim | float) <= (rhel_post_check_threshold_mem_usage | default(95) | float)
+      - (__rhel_post_check_current_disk_usage.stdout | trim | float) <= (rhel_post_check_threshold_disk_usage | default(90) | float)
+    fail_msg: >-
+      事後リソース使用率が許容閾値を超過しています。パッチ適用後のプロセス状態やリソース状況を確認してください。
+      (CPU: {{ __rhel_post_check_current_cpu_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_cpu_usage | default(95) }}%,
+      MEM: {{ __rhel_post_check_current_mem_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_mem_usage | default(95) }}%,
+      DISK: {{ __rhel_post_check_current_disk_usage.stdout | trim }}%/閾値: {{ rhel_post_check_threshold_disk_usage | default(90) }}%)
+    success_msg: "すべての事後リソース使用率が正常範囲内です。"
+
 # ==================================================
 # 5. RHEL 7 専用: /boot 容量確保 (kernel-debug 削除)
 # 対象: RHEL 7 かつ ホスト名が "SV" から始まる仮想基盤のサーバ

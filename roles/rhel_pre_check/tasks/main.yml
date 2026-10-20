@@ -13,4 +13,4 @@
   ansible.builtin.include_tasks: backup_httpd_conf.yml
 
 - name: "Include PostgreSQL symlink backup tasks"
-  ansible.builtin.include_tasks: backup_postgresql_link.yml
+  ansible.builtin.include_tasks: check_postgresql_link.yml

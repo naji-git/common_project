@@ -7,10 +7,10 @@
     __rhel_post_check_today_compact: "{{ ansible_facts['date_time']['date'] | replace('-', '') }}"
     __rhel_post_check_today_hyphen: "{{ ansible_facts['date_time']['date'] }}"
 
-# 開始支点となる事前確認ファイルのタイムスタンプを取得（変数を参照）
+# 開始支点となる事前確認ファイルのタイムスタンプを取得（固定パス指定）
 - name: "Check stat of pre-check cpu usage file for start time"
   ansible.builtin.stat:
-    path: "{{ rhel_post_check_work_dir }}/cpu_usage_before"
+    path: "/home/infra/rhel_patch/cpu_usage_before"
   register: __rhel_post_check_pre_file_stat
 
 - name: "Check if today SAM filtered log file exists"
@@ -48,7 +48,6 @@
                     if not line_clean:
                         continue
 
-                    # SAMログの先頭タイムスタンプ解析 (書式例: 20261016,03:45:45,...)
                     parts = line_clean.split(',')
                     if len(parts) >= 2:
                         try:
@@ -56,14 +55,11 @@
                             log_dt = datetime.datetime.strptime(dt_str, "%Y%m%d %H:%M:%S")
                             log_ts = log_dt.timestamp()
 
-                            # 指定時間外のログはスキップ（事前確認前、または判定実行後）
                             if log_ts < start_ts or log_ts > end_ts:
                                 continue
                         except ValueError:
-                            # タイムスタンプ解析ができないヘッダーや別形式行はスキップせず判定対象へ流す
                             pass
 
-                    # 無視パターンと突き合わせ
                     if not any(cp.search(line_clean) for cp in compiled_patterns):
                         unexpected_errors.append(line_clean)
         except Exception as e:
@@ -84,7 +80,6 @@
             if (__rhel_post_check_sam_log_errors.stdout | trim | length > 0)
             else ['[OK] パッチ作業時間帯のSAM監視ログに問題のあるメッセージは検出されませんでした。']
           }}
-
 
 # ==================================================
 # 2. JP1サービス確認/起動（個別判定・順序保証版）

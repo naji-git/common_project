@@ -11,7 +11,7 @@
 
 - name: "Save RPM package list to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_post_check_rpm_qa_result.stdout }}\n"
+    content: "{{ __rhel_post_check_rpm_qa_result['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/rpm_qa_after"
     mode: "0644"
 
@@ -21,13 +21,13 @@
 # 事前事後エビデンスの diff 結果から変更対象行のみをパイプと正規表現で抽出するため shell を使用
 - name: "Compare pre and post patch RPM package lists"
   ansible.builtin.shell: >-
-    diff -u {{ patch_evidence_dir }}/rpm_qa_before {{ patch_evidence_dir }}/rpm_qa_after | grep -E '^[+-][^+-]' || true
+    diff -u "{{ patch_evidence_dir }}/rpm_qa_before" "{{ patch_evidence_dir }}/rpm_qa_after" | grep -E '^[+-][^+-]' || true
   register: __rhel_post_check_rpm_qa_diff
   changed_when: false
 
 - name: "Save RPM package diff to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_post_check_rpm_qa_diff.stdout }}\n"
+    content: "{{ __rhel_post_check_rpm_qa_diff['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/rpm_qa_diff"
     mode: "0644"
 
@@ -35,5 +35,5 @@
   ansible.builtin.debug:
     msg:
       - "==================== [更新されたパッケージ] ===================="
-      - "{{ '差分なし (パッケージ変更はありません)' if __rhel_post_check_rpm_qa_diff.stdout | trim | length == 0 else __rhel_post_check_rpm_qa_diff.stdout_lines }}"
+      - "{{ '差分なし (パッケージ変更はありません)' if (__rhel_post_check_rpm_qa_diff['stdout'] | trim | length == 0) else __rhel_post_check_rpm_qa_diff['stdout_lines'] }}"
       - "================================================================"

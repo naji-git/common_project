@@ -5,6 +5,7 @@
 - name: "Set today date formatted variable"
   ansible.builtin.set_fact:
     __rhel_post_check_today_compact: "{{ ansible_facts['date_time']['date'] | replace('-', '') }}"
+    __rhel_post_check_today_hyphen: "{{ ansible_facts['date_time']['date'] }}"
 
 - name: "Check if today SAM filtered log file exists"
   ansible.builtin.stat:
@@ -12,8 +13,9 @@
   register: __rhel_post_check_sam_log_stat
 
 - name: "Display SAM monitoring filtered log content"
-  when: __rhel_post_check_sam_log_stat.stat.exists | bool
+  when: __rhel_post_check_sam_log_stat['stat']['exists'] | bool
   block:
+    # フィルタログの内容を標準出力に取得・表示するため command を使用
     - name: "Cat SAM filtered log file"
       ansible.builtin.command: "cat /usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_post_check_today_compact }}.log"
       register: __rhel_post_check_sam_log_content
@@ -23,12 +25,12 @@
       ansible.builtin.debug:
         msg:
           - "=== SAM Filtered Log (/usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_post_check_today_compact }}.log) ==="
-          - "{{ __rhel_post_check_sam_log_content.stdout_lines if (__rhel_post_check_sam_log_content.stdout | trim | length > 0) else ['(ログファイルは空です)'] }}"
+          - "{{ __rhel_post_check_sam_log_content['stdout_lines'] if (__rhel_post_check_sam_log_content['stdout'] | trim | length > 0) else ['(ログファイルは空です)'] }}"
 
 - name: "Display message if SAM filtered log file does not exist"
   ansible.builtin.debug:
     msg: "[INFO] 本日のSAM監視ログファイル (/usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_post_check_today_compact }}.log) は存在しません。"
-  when: not (__rhel_post_check_sam_log_stat.stat.exists | bool)
+  when: not (__rhel_post_check_sam_log_stat['stat']['exists'] | bool)
 
 # ==================================================
 # 2. JP1サービス確認/起動（個別判定・順序保証版）
@@ -43,8 +45,8 @@
 
 - name: "Set JP1 existence facts"
   ansible.builtin.set_fact:
-    __rhel_post_check_jp1_base_exists: "{{ __rhel_post_check_jp1_stats.results[0].stat.exists | bool }}"
-    __rhel_post_check_jp1_ajs3_exists: "{{ __rhel_post_check_jp1_stats.results[1].stat.exists | bool }}"
+    __rhel_post_check_jp1_base_exists: "{{ __rhel_post_check_jp1_stats['results'][0]['stat']['exists'] | bool }}"
+    __rhel_post_check_jp1_ajs3_exists: "{{ __rhel_post_check_jp1_stats['results'][1]['stat']['exists'] | bool }}"
 
 # --------------------------------------------------
 # 2-1. jp1_base の起動（前提基盤のため必ず先に起動）
@@ -53,7 +55,7 @@
   ansible.builtin.systemd:
     name: jp1_base
     state: started
-  when: __rhel_post_check_jp1_base_exists
+  when: __rhel_post_check_jp1_base_exists | bool
   register: __rhel_post_check_jp1_base_start
   ignore_errors: true
 
@@ -64,7 +66,7 @@
   ansible.builtin.systemd:
     name: jp1_ajs3
     state: started
-  when: __rhel_post_check_jp1_ajs3_exists
+  when: __rhel_post_check_jp1_ajs3_exists | bool
   register: __rhel_post_check_jp1_ajs3_start
   ignore_errors: true
 
@@ -73,9 +75,9 @@
 # --------------------------------------------------
 # エビデンス・ログ確認用に現在のサービス稼働詳細を取得するため command を使用
 - name: "Get JP1 service status for existing services"
-  ansible.builtin.command: "systemctl status {{ item.item }}"
-  loop: "{{ __rhel_post_check_jp1_stats.results }}"
-  when: item.stat.exists | bool
+  ansible.builtin.command: "systemctl status {{ item['item'] }}"
+  loop: "{{ __rhel_post_check_jp1_stats['results'] }}"
+  when: item['stat']['exists'] | bool
   register: __rhel_post_check_jp1_status_result
   changed_when: false
   failed_when: false
@@ -83,19 +85,19 @@
 - name: "Display JP1 services status"
   ansible.builtin.debug:
     msg:
-      - "=== {{ item.item.item }} Status ==="
-      - "{{ item.stdout_lines }}"
-  loop: "{{ __rhel_post_check_jp1_status_result.results | default([]) }}"
+      - "=== {{ item['item']['item'] }} Status ==="
+      - "{{ item['stdout_lines'] }}"
+  loop: "{{ __rhel_post_check_jp1_status_result['results'] | default([]) }}"
   when:
-    - item.stdout_lines is defined
-    - item.skipped is not defined or not item.skipped
+    - item['stdout_lines'] is defined
+    - item['skipped'] is not defined or not (item['skipped'] | bool)
 
 - name: "Display skip message when no JP1 services are installed"
   ansible.builtin.debug:
     msg: "[INFO] Neither jp1_base nor jp1_ajs3 is installed. Skipping JP1 check."
   when:
-    - not __rhel_post_check_jp1_base_exists
-    - not __rhel_post_check_jp1_ajs3_exists
+    - not (__rhel_post_check_jp1_base_exists | bool)
+    - not (__rhel_post_check_jp1_ajs3_exists | bool)
 
 # ==================================================
 # 3. EDR (CrowdStrike Falcon) の正常性確認
@@ -106,7 +108,7 @@
   register: __rhel_post_check_falconctl_stat
 
 - name: "Verify CrowdStrike Falcon RFM state"
-  when: __rhel_post_check_falconctl_stat.stat.exists | bool
+  when: __rhel_post_check_falconctl_stat['stat']['exists'] | bool
   block:
     # 専用モジュールが存在しないベンダー独自CLIの実行のため command を使用
     - name: "Get CrowdStrike Falcon RFM state"
@@ -115,20 +117,19 @@
       changed_when: false
       failed_when: false
 
-    # 異常があっても落とさず、警告メッセージとして出力
     - name: "Display CrowdStrike Falcon RFM check result"
       ansible.builtin.debug:
         msg: >-
           {{
             '[OK] CrowdStrike Falcon の RFM ステータスは正常 (rfm-state=false.) です。'
-            if ('rfm-state=false.' in __rhel_post_check_rfm_result.stdout)
-            else '[WARNING] CrowdStrike Falcon の RFM ステータス異常を検知しました: ' ~ (__rhel_post_check_rfm_result.stdout | trim)
+            if ('rfm-state=false.' in __rhel_post_check_rfm_result['stdout'])
+            else '[WARNING] CrowdStrike Falcon の RFM ステータス異常を検知しました: ' ~ (__rhel_post_check_rfm_result['stdout'] | trim)
           }}
 
 - name: "Display skip message when falconctl is not installed"
   ansible.builtin.debug:
     msg: "[INFO] CrowdStrike falconctl is not found. Skipping EDR health check."
-  when: not (__rhel_post_check_falconctl_stat.stat.exists | bool)
+  when: not (__rhel_post_check_falconctl_stat['stat']['exists'] | bool)
 
 # ==================================================
 # 4. 監視抑止ファイルの存在確認・削除
@@ -142,7 +143,7 @@
 
 - name: "Display initial SAM temporary directory contents"
   ansible.builtin.debug:
-    msg: "{{ __rhel_post_check_sam_tmp_initial.stdout_lines | default(['Directory not accessible']) }}"
+    msg: "{{ __rhel_post_check_sam_tmp_initial['stdout_lines'] | default(['Directory not accessible']) }}"
 
 # 監視抑止ファイルの探索（タイムスタンプ比較のため find モジュールを使用）
 - name: "Find today modified DISABLE files in SAM temporary directory"
@@ -155,11 +156,11 @@
 # 作業日当日に更新・作成された DISABLE ファイルを削除（冪等性を担保）
 - name: "Remove today modified DISABLE files"
   ansible.builtin.file:
-    path: "{{ item.path }}"
+    path: "{{ item['path'] }}"
     state: absent
-  loop: "{{ __rhel_post_check_disable_files.files | default([]) }}"
+  loop: "{{ __rhel_post_check_disable_files['files'] | default([]) }}"
   when:
-    - ('%Y-%m-%d' | strftime(item.mtime)) == __rhel_post_check_today_hyphen
+    - ('%Y-%m-%d' | strftime(item['mtime'])) == __rhel_post_check_today_hyphen
   register: __rhel_post_check_removed_disable_files
   ignore_errors: true
 
@@ -172,7 +173,7 @@
 
 - name: "Display final SAM temporary directory contents"
   ansible.builtin.debug:
-    msg: "{{ __rhel_post_check_sam_tmp_final.stdout_lines | default(['Directory not accessible']) }}"
+    msg: "{{ __rhel_post_check_sam_tmp_final['stdout_lines'] | default(['Directory not accessible']) }}"
 
 # ==================================================
 # 5. ステータス確認の総合サマリ表示
@@ -184,7 +185,7 @@
       - "             AGENT STATUS CHECK SUMMARY           "
       - "=================================================="
       - "SAM Log Check      : msg_filtered_{{ __rhel_post_check_today_compact }}.logの内容を確認"
-      - "JP1 Services       : {{ 'FAILED TO START' if ((__rhel_post_check_jp1_base_start.failed | default(false)) or (__rhel_post_check_jp1_ajs3_start.failed | default(false))) else ('OK' if (__rhel_post_check_jp1_stats.results[0].stat.exists | default(false)) else 'SKIPPED') }}"
-      - "CrowdStrike RFM    : {{ 'OK' if ('rfm-state=false.' in (__rhel_post_check_rfm_result.stdout | default(''))) else ('WARNING (Not false)' if (__rhel_post_check_falconctl_stat.stat.exists | default(false)) else 'SKIPPED') }}"
-      - "DISABLE Files Purge: {{ 'PURGED (' ~ (__rhel_post_check_removed_disable_files.results | default([]) | selectattr('changed', 'equalto', true) | list | length) ~ ' files)' if (__rhel_post_check_disable_files.files | default([]) | length > 0) else 'NONE' }}"
+      - "JP1 Services       : {{ 'FAILED TO START' if ((__rhel_post_check_jp1_base_start['failed'] | default(false)) or (__rhel_post_check_jp1_ajs3_start['failed'] | default(false))) else ('OK' if (__rhel_post_check_jp1_stats['results'][0]['stat']['exists'] | default(false)) else 'SKIPPED') }}"
+      - "CrowdStrike RFM    : {{ 'OK' if ('rfm-state=false.' in (__rhel_post_check_rfm_result['stdout'] | default(''))) else ('WARNING (Not false)' if (__rhel_post_check_falconctl_stat['stat']['exists'] | default(false)) else 'SKIPPED') }}"
+      - "DISABLE Files Purge: {{ 'PURGED (' ~ (__rhel_post_check_removed_disable_files['results'] | default([]) | selectattr('changed', 'equalto', true) | list | length) ~ ' files)' if (__rhel_post_check_disable_files['files'] | default([]) | length > 0) else 'NONE' }}"
       - "=================================================="

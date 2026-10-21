@@ -13,9 +13,9 @@
 # ==================================================
 
 # --------------------------------------------------
-# 1. CPU使用率確認 & 閾値チェック
+# 1. CPU使用率確認
 # --------------------------------------------------
-# 過去ログを含めた sar 全体出力をエビデンス化
+# 過去ログを含めた sar 全体出力をエビデンス化するため command を使用
 - name: "Get sar CPU usage logs after patch"
   ansible.builtin.command: sar -u
   register: __rhel_post_check_cpu_usage
@@ -23,14 +23,14 @@
 
 - name: "Save CPU usage logs to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_post_check_cpu_usage.stdout }}\n"
+    content: "{{ __rhel_post_check_cpu_usage['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/cpu_usage_after"
     mode: "0644"
 
 # --------------------------------------------------
-# 2. メモリ使用率確認 & 閾値チェック
+# 2. メモリ使用率確認
 # --------------------------------------------------
-# 当日の sar メモリログ全体をエビデンス化（CPUの sar -u と粒度を統一）
+# 当日の sar メモリログ全体をエビデンス化（CPUの sar -u と粒度を統一）するため command を使用
 - name: "Get sar memory usage logs after patch"
   ansible.builtin.command: sar -r
   register: __rhel_post_check_mem_usage
@@ -38,14 +38,14 @@
 
 - name: "Save memory usage logs to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_post_check_mem_usage.stdout }}\n"
+    content: "{{ __rhel_post_check_mem_usage['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/mem_usage_after"
     mode: "0644"
 
 # --------------------------------------------------
-# 3. ディスク使用率確認 & 閾値チェック (/ 使用率)
+# 3. ディスク使用率確認 (/ 使用率)
 # --------------------------------------------------
-# システム全体のディスク構成・使用状況をエビデンス化
+# システム全体のディスク構成・使用状況をエビデンス化するため command を使用
 - name: "Get entire disk usage logs after patch"
   ansible.builtin.command: df -h
   register: __rhel_post_check_disk_usage
@@ -53,13 +53,14 @@
 
 - name: "Save disk usage logs to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_post_check_disk_usage.stdout }}\n"
+    content: "{{ __rhel_post_check_disk_usage['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/disk_usage_after"
     mode: "0644"
 
 # ==================================================
 # 4. パッチ適用作業前後でのリソース比較および増減率の算出・表示
 # ==================================================
+# 既存エビデンスファイルの解析・数値パースおよび差分計算をPythonで一括処理するため shell を使用
 - name: "Analyze resource usage comparison with pre-patch status"
   ansible.builtin.shell: |
     python3 - << 'EOF'
@@ -161,13 +162,13 @@
         sign = "+" if diff > 0 else ""
         return f"パッチ適用前: {before:.1f}% -> パッチ適用後: {after:.1f}% (増減: {sign}{diff:.1f}pt)"
 
-    print(f"=== CPU使用率")
+    print("=== CPU使用率 ===")
     print(format_diff(cpu_before_val, cpu_after_val))
 
-    print(f"=== メモリ使用率")
+    print("=== メモリ使用率 ===")
     print(format_diff(mem_before_val, mem_after_val))
 
-    print("=== ディスク(/)使用率")
+    print("=== ディスク(/)使用率 ===")
     print(format_diff(disk_before_val, disk_after_val))
     EOF
   register: __rhel_post_check_comparison_result
@@ -175,4 +176,4 @@
 
 - name: "Display resource usage comparison"
   ansible.builtin.debug:
-    msg: "{{ __rhel_post_check_comparison_result.stdout_lines }}"
+    msg: "{{ __rhel_post_check_comparison_result['stdout_lines'] }}"

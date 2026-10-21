@@ -57,3 +57,122 @@
     dest: "{{ patch_evidence_dir }}/disk_usage_after"
     mode: "0644"
 
+# ==================================================
+# 4. パッチ適用作業前後でのリソース比較および増減率の算出・表示
+# ==================================================
+- name: "Analyze resource usage comparison with pre-patch status"
+  ansible.builtin.shell: |
+    python3 - << 'EOF'
+    import os
+    import datetime
+
+    evidence_dir = "{{ patch_evidence_dir }}"
+
+    def get_file_mtime_str(path):
+        if os.path.exists(path):
+            ts = os.path.getmtime(path)
+            return datetime.datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+        return "N/A"
+
+    # --- 1. CPU使用率 (cpu_usage_before の作成時刻時点の末尾行) ---
+    cpu_before_val = None
+    cpu_before_file = os.path.join(evidence_dir, "cpu_usage_before")
+    cpu_before_time = get_file_mtime_str(cpu_before_file)
+    if os.path.exists(cpu_before_file):
+        with open(cpu_before_file, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 8 and parts[0] != "Linux" and parts[1] != "CPU":
+                    try:
+                        cpu_before_val = 100.0 - float(parts[-1])
+                    except ValueError:
+                        pass
+
+    # --- 2. メモリ使用率 (mem_usage_before の作成時刻時点の末尾行) ---
+    mem_before_val = None
+    mem_before_file = os.path.join(evidence_dir, "mem_usage_before")
+    mem_before_time = get_file_mtime_str(mem_before_file)
+    if os.path.exists(mem_before_file):
+        with open(mem_before_file, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 5 and parts[0] != "Linux" and "%memused" not in line:
+                    try:
+                        mem_before_val = float(parts[4])
+                    except ValueError:
+                        pass
+
+    # --- 3. ディスク(/)使用率 (disk_usage_before / disk_usage_after) ---
+    disk_before_val = None
+    disk_before_file = os.path.join(evidence_dir, "disk_usage_before")
+    if os.path.exists(disk_before_file):
+        with open(disk_before_file, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 6 and parts[5] == "/":
+                    try:
+                        disk_before_val = float(parts[4].replace("%", ""))
+                    except ValueError:
+                        pass
+
+    disk_after_val = None
+    disk_after_file = os.path.join(evidence_dir, "disk_usage_after")
+    if os.path.exists(disk_after_file):
+        with open(disk_after_file, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 6 and parts[5] == "/":
+                    try:
+                        disk_after_val = float(parts[4].replace("%", ""))
+                    except ValueError:
+                        pass
+
+    # --- 現在(事後)のCPU・メモリ値 (sar 直近レコード) ---
+    cpu_after_val = None
+    cpu_after_file = os.path.join(evidence_dir, "cpu_usage_after")
+    if os.path.exists(cpu_after_file):
+        with open(cpu_after_file, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 8 and parts[0] != "Linux" and parts[1] != "CPU":
+                    try:
+                        cpu_after_val = 100.0 - float(parts[-1])
+                    except ValueError:
+                        pass
+
+    mem_after_val = None
+    mem_after_file = os.path.join(evidence_dir, "mem_usage_after")
+    if os.path.exists(mem_after_file):
+        with open(mem_after_file, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 5 and parts[0] != "Linux" and "%memused" not in line:
+                    try:
+                        mem_after_val = float(parts[4])
+                    except ValueError:
+                        pass
+
+    now_time = datetime.datetime.now().strftime("%H:%M:%S")
+
+    def format_diff(before, after):
+        if before is None or after is None:
+            return f"データ取得不可 (パッチ適用前: {before}, パッチ適用後: {after})"
+        diff = after - before
+        sign = "+" if diff > 0 else ""
+        return f"パッチ適用前: {before:.1f}% -> パッチ適用後: {after:.1f}% (増減: {sign}{diff:.1f}pt)"
+
+    print(f"=== CPU使用率 (作成時刻 {cpu_before_time} -> 現在 {now_time}) ===")
+    print(format_diff(cpu_before_val, cpu_after_val))
+
+    print(f"=== メモリ使用率 (作成時刻 {mem_before_time} -> 現在 {now_time}) ===")
+    print(format_diff(mem_before_val, mem_after_val))
+
+    print("=== ディスク(/)使用率 (disk_usage_before -> disk_usage_after) ===")
+    print(format_diff(disk_before_val, disk_after_val))
+    EOF
+  register: __rhel_post_check_comparison_result
+  changed_when: false
+
+- name: "Display resource usage comparison"
+  ansible.builtin.debug:
+    msg: "{{ __rhel_post_check_comparison_result.stdout_lines }}"

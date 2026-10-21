@@ -1,0 +1,127 @@
+---
+# ==================================================
+# 1. パッチ格納ディレクトリの削除
+# ==================================================
+- name: "Remove patch storage directory"
+  ansible.builtin.file:
+    path: "/home/infra/patch"
+    state: absent
+
+- name: "Verify patch storage directory is removed"
+  ansible.builtin.stat:
+    path: "/home/infra/patch"
+  register: __rhel_cleanup_patch_dir_stat
+
+- name: "Assert patch storage directory does not exist"
+  ansible.builtin.assert:
+    that:
+      - not __rhel_cleanup_patch_dir_stat.stat.exists
+    fail_msg: "[ERROR] /home/infra/patch の削除に失敗しました。"
+    success_msg: "[OK] /home/infra/patch は正常に削除されました。"
+
+# ==================================================
+# 2. パッチ作業ディレクトリのリネーム退避
+# ==================================================
+# patch_mythos* の削除（存在する場合のみ）
+- name: "Find patch_mythos directories or files"
+  ansible.builtin.find:
+    paths: "/home/infra"
+    patterns: "patch_mythos*"
+    file_type: any
+  register: __rhel_cleanup_mythos_targets
+
+- name: "Remove patch_mythos targets"
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ __rhel_cleanup_mythos_targets.files }}"
+
+# 退避先ディレクトリ名の定義（例: 2026_10_old）
+- name: "Set archive directory name fact"
+  ansible.builtin.set_fact:
+    __rhel_cleanup_archive_dir: "/home/infra/{{ patch_work_year }}_{{ patch_delivery_month }}_old"
+
+# /home/infra/rhel_patch の存在確認
+- name: "Check if rhel_patch directory exists"
+  ansible.builtin.stat:
+    path: "/home/infra/rhel_patch"
+  register: __rhel_cleanup_rhel_patch_stat
+
+- name: "Archive and cleanup rhel_patch directory"
+  when: __rhel_cleanup_rhel_patch_stat.stat.exists | bool
+  block:
+    - name: "Create archive directory"
+      ansible.builtin.file:
+        path: "{{ __rhel_cleanup_archive_dir }}"
+        state: directory
+        owner: infra
+        group: infra
+        mode: "0755"
+
+    # rhel_patch 配下の内容物を退避先へ移動
+    - name: "Move contents from rhel_patch to archive directory"
+      ansible.builtin.shell: >-
+        mv /home/infra/rhel_patch/* {{ __rhel_cleanup_archive_dir }}/
+      changed_when: true
+
+    # 中身移動後に空になった rhel_patch ディレクトリ自体を削除
+    - name: "Remove rhel_patch directory"
+      ansible.builtin.file:
+        path: "/home/infra/rhel_patch"
+        state: absent
+
+    # rhel_patch が削除されたことの検証
+    - name: "Verify rhel_patch directory is removed"
+      ansible.builtin.stat:
+        path: "/home/infra/rhel_patch"
+      register: __rhel_cleanup_rhel_patch_check
+
+    - name: "Assert rhel_patch directory is removed"
+      ansible.builtin.assert:
+        that:
+          - not __rhel_cleanup_rhel_patch_check.stat.exists
+        fail_msg: "[ERROR] /home/infra/rhel_patch の削除に失敗しました。"
+        success_msg: "[OK] /home/infra/rhel_patch は正常に退避・削除されました。"
+
+# ==================================================
+# 3. パッチ作業ディレクトリのローテーション (5世代保持)
+# ==================================================
+# YYYY_MM_old 形式の退避ディレクトリを検出
+- name: "Find existing archive directories"
+  ansible.builtin.find:
+    paths: "/home/infra"
+    file_type: directory
+    patterns: "^[0-9]{4}_[0-9]{2}_old$"
+    use_regex: true
+  register: __rhel_cleanup_archive_dirs
+
+# ディレクトリ名でソートし、最新5世代から漏れた古いディレクトリを抽出
+- name: "Determine old archive directories to purge"
+  ansible.builtin.set_fact:
+    __rhel_cleanup_dirs_to_remove: >-
+      {{
+        (__rhel_cleanup_archive_dirs.files | map(attribute='path') | sort)[:-5]
+        if (__rhel_cleanup_archive_dirs.files | length > 5)
+        else []
+      }}
+
+- name: "Display rotation status"
+  ansible.builtin.debug:
+    msg:
+      - "=== パッチ退避ディレクトリ ローテーション確認 ==="
+      - "検出総数    : {{ __rhel_cleanup_archive_dirs.files | length }} 世代"
+      - "保持上限    : 5 世代"
+      - "削除対象件数: {{ __rhel_cleanup_dirs_to_remove | length }} 件"
+      - "削除対象一覧: {{ __rhel_cleanup_dirs_to_remove }}"
+
+- name: "Remove old archive directories exceeding 5 generations"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ __rhel_cleanup_dirs_to_remove }}"
+  when: __rhel_cleanup_dirs_to_remove | length > 0
+
+- name: "Display skip message if total generations are within limit"
+  ansible.builtin.debug:
+    msg: "[INFO] 退避ディレクトリは5世代以下のため、ローテーション削除はスキップされました。"
+  when: __rhel_cleanup_dirs_to_remove | length == 0

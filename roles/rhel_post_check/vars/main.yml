@@ -1,1 +1,6 @@
+#パッチ作業ディレクトリ
 patch_evidence_dir: "/home/infra/rhel_patch"
+
+# 作業年度およびパッチ提供月
+patch_work_year: "2026"
+patch_delivery_month: "10"

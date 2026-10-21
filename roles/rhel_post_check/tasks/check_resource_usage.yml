@@ -160,7 +160,7 @@
             return f"データ取得不可 (パッチ適用前: {before}, パッチ適用後: {after})"
         diff = after - before
         sign = "+" if diff > 0 else ""
-        return f"パッチ適用前: {before:.1f}% -> パッチ適用後: {after:.1f}% (増減: {sign}{diff:.1f}pt)"
+        return f"パッチ適用前: {before:.1f}% -> パッチ適用後: {after:.1f}% (増減: {sign}{diff:.1f}%)"
 
     print("=== CPU使用率 ===")
     print(format_diff(cpu_before_val, cpu_after_val))

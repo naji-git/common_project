@@ -15,7 +15,7 @@
 - name: "Assert patch storage directory does not exist"
   ansible.builtin.assert:
     that:
-      - not __rhel_cleanup_patch_dir_stat.stat.exists
+      - not __rhel_cleanup_patch_dir_stat['stat']['exists']
     fail_msg: >-
       [ERROR] /home/infra/patch の削除に失敗しました。ファイルが他プロセスに使用されていないか、パーミッションを確認して手動で削除してください。
     success_msg: "[OK] /home/infra/patch は正常に削除されました。"
@@ -44,7 +44,7 @@
 - name: "Archive and cleanup rhel_patch directory"
   vars:
     __rhel_cleanup_archive_dir: "/home/infra/{{ patch_work_year }}_{{ patch_delivery_month }}_old"
-  when: __rhel_cleanup_rhel_patch_stat.stat.exists | bool
+  when: __rhel_cleanup_rhel_patch_stat['stat']['exists'] | bool
   block:
     - name: "Create archive directory"
       ansible.builtin.file:
@@ -71,7 +71,7 @@
     - name: "Assert rhel_patch directory is removed"
       ansible.builtin.assert:
         that:
-          - not __rhel_cleanup_rhel_patch_check.stat.exists
+          - not __rhel_cleanup_rhel_patch_check['stat']['exists']
         fail_msg: >-
           [ERROR] /home/infra/rhel_patch の削除に失敗しました。残存ファイルを確認の上、手動で退避または削除を実施してください。
         success_msg: "[OK] /home/infra/rhel_patch は正常に退避・削除されました。"

@@ -17,7 +17,7 @@
 
 - name: "Save package manager configuration to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_pre_check_pkg_conf_slurp.content | b64decode }}"
+    content: "{{ __rhel_pre_check_pkg_conf_slurp['content'] | b64decode }}"
     dest: "{{ patch_evidence_dir }}/{{ __rhel_pre_check_target_pkg_conf | basename }}_before"
     mode: "0644"
 
@@ -36,8 +36,8 @@
 
 - name: "Modify package manager configuration when exclude is present"
   when:
-    - __rhel_pre_check_check_exclude.found is defined
-    - __rhel_pre_check_check_exclude.found > 0
+    - __rhel_pre_check_check_exclude['found'] is defined
+    - __rhel_pre_check_check_exclude['found'] > 0
   block:
     - name: "Backup original package manager configuration file"
       ansible.builtin.copy:
@@ -71,6 +71,6 @@
 
 - name: "Save RPM package list to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_pre_check_rpm_qa_result.stdout }}\n"
+    content: "{{ __rhel_pre_check_rpm_qa_result['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/rpm_qa_before"
     mode: "0644"

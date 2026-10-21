@@ -7,7 +7,7 @@
 
 # 2. httpd.conf が存在する場合のみ後続の取得・退避処理を実行
 - name: "Backup and collect httpd configuration evidence"
-  when: __rhel_pre_check_httpd_conf_stat.stat.exists | bool
+  when: __rhel_pre_check_httpd_conf_stat['stat']['exists'] | bool
   block:
     - name: "Create evidence directory for patch operations"
       ansible.builtin.file:
@@ -25,7 +25,7 @@
 
     - name: "Save conf.modules.d file list to evidence file"
       ansible.builtin.copy:
-        content: "{{ __rhel_pre_check_conf_modules_list.stdout }}\n"
+        content: "{{ __rhel_pre_check_conf_modules_list['stdout'] }}\n"
         dest: "{{ patch_evidence_dir }}/conf.modules.d_before"
         mode: "0644"
 
@@ -39,7 +39,7 @@
 
     - name: "Save conf.d file list to evidence file"
       ansible.builtin.copy:
-        content: "{{ __rhel_pre_check_conf_d_list.stdout }}\n"
+        content: "{{ __rhel_pre_check_conf_d_list['stdout'] }}\n"
         dest: "{{ patch_evidence_dir }}/conf.d_before"
         mode: "0644"
 
@@ -55,9 +55,9 @@
         dest: "{{ patch_evidence_dir }}/httpd.service_before"
         remote_src: true
         mode: preserve
-      when: __rhel_pre_check_httpd_service_stat.stat.exists | bool
+      when: __rhel_pre_check_httpd_service_stat['stat']['exists'] | bool
 
 - name: "Display skip message when httpd is not installed"
   ansible.builtin.debug:
     msg: "httpd is not installed (/etc/httpd/conf/httpd.conf not found). Skipping httpd backup tasks."
-  when: not (__rhel_pre_check_httpd_conf_stat.stat.exists | bool)
+  when: not (__rhel_pre_check_httpd_conf_stat['stat']['exists'] | bool)

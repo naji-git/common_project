@@ -1,3 +1,4 @@
+---
 # --------------------------------------------------
 # 0.事前確認エビデンスディレクトリの準備（既存退避 & 新規作成）
 # --------------------------------------------------
@@ -7,11 +8,12 @@
   register: __rhel_pre_check_existing_evidence_dir
 
 - name: "Backup and rename existing evidence directory"
-  when: __rhel_pre_check_existing_evidence_dir.stat.exists | bool
+  when: __rhel_pre_check_existing_evidence_dir['stat']['exists'] | bool
   block:
+    # 既存ディレクトリをタイムスタンプ付きでリネーム退避するため command を使用
     - name: "Rename existing evidence directory with timestamp"
       ansible.builtin.command: >-
-        mv {{ patch_evidence_dir }} {{ patch_evidence_dir }}_backup_{{ ansible_facts['date_time']['iso8601_basic_short'] }}
+        mv "{{ patch_evidence_dir }}" "{{ patch_evidence_dir }}_backup_{{ ansible_facts['date_time']['iso8601_basic_short'] }}"
       register: __rhel_pre_check_backup_result
       changed_when: true
 
@@ -32,6 +34,7 @@
 # --------------------------------------------------
 # 1. CPU使用率確認
 # --------------------------------------------------
+# 過去ログを含めた sar 全体出力をエビデンス化するため command を使用
 - name: "Get sar CPU usage logs before patch"
   ansible.builtin.command: sar -u
   register: __rhel_pre_check_cpu_usage
@@ -39,14 +42,14 @@
 
 - name: "Save CPU usage logs to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_pre_check_cpu_usage.stdout }}\n"
+    content: "{{ __rhel_pre_check_cpu_usage['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/cpu_usage_before"
     mode: "0644"
 
 # --------------------------------------------------
 # 2. メモリ使用率確認
 # --------------------------------------------------
-# 当日の sar メモリログ全体をエビデンス化（CPUの sar -u と粒度を統一）
+# 当日の sar メモリログ全体をエビデンス化（CPUの sar -u と粒度を統一）するため command を使用
 - name: "Get sar memory usage logs before patch"
   ansible.builtin.command: sar -r
   register: __rhel_pre_check_mem_usage
@@ -54,13 +57,14 @@
 
 - name: "Save memory usage logs to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_pre_check_mem_usage.stdout }}\n"
+    content: "{{ __rhel_pre_check_mem_usage['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/mem_usage_before"
     mode: "0644"
 
 # --------------------------------------------------
 # 3. ディスク使用率確認
 # --------------------------------------------------
+# システム全体のディスク構成・使用状況をエビデンス化するため command を使用
 - name: "Get disk usage logs before patch"
   ansible.builtin.command: df -h
   register: __rhel_pre_check_disk_usage
@@ -68,7 +72,7 @@
 
 - name: "Save disk usage logs to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_pre_check_disk_usage.stdout }}\n"
+    content: "{{ __rhel_pre_check_disk_usage['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/disk_usage_before"
     mode: "0644"
 
@@ -90,8 +94,10 @@
     - name: "Assert running kernel is not a debug kernel"
       ansible.builtin.assert:
         that:
-          - "'debug' not in __rhel_pre_check_current_kernel.stdout"
-        fail_msg: "現在 kernel-debug で起動しているため削除できません。通常カーネルで再起動後に再実行してください。"
+          - "'debug' not in __rhel_pre_check_current_kernel['stdout']"
+        fail_msg: >-
+          [ERROR] 現在 kernel-debug で起動しているため削除できません。
+          grubby 等でデフォルトカーネルを通常カーネルに設定し、再起動後に作業を再実行してください。
 
     # パッケージの存在を正規表現で検出するため shell を使用
     - name: "Detect installed kernel-debug packages"
@@ -101,8 +107,7 @@
       changed_when: false
 
     - name: "Remove kernel-debug packages if installed"
-      when:
-        - __rhel_pre_check_installed_kernel_debug.stdout | trim | length > 0
+      when: __rhel_pre_check_installed_kernel_debug['stdout'] | trim | length > 0
       block:
         # 削除前の /boot 領域サイズを確認するため shell を使用
         - name: "Check /boot disk space before removal"
@@ -113,13 +118,13 @@
         # 削除前の RPM 一覧を退避するため shell を使用
         - name: "Save RPM package list before removal"
           ansible.builtin.shell: >-
-            rpm -qa | sort -n > {{ patch_evidence_dir }}/rpm_qa_before
+            rpm -qa | sort -n > "{{ patch_evidence_dir }}/rpm_qa_before"
           changed_when: false
 
         # 専用モジュール ansible.builtin.yum を使用して冪等性を確保
         - name: "Remove installed kernel-debug packages"
           ansible.builtin.yum:
-            name: "{{ __rhel_pre_check_installed_kernel_debug.stdout_lines }}"
+            name: "{{ __rhel_pre_check_installed_kernel_debug['stdout_lines'] }}"
             state: absent
 
         # 削除後の /boot 領域サイズを確認するため shell を使用
@@ -128,11 +133,16 @@
           register: __rhel_pre_check_df_boot_after
           changed_when: false
 
-        # 削除後の差分確認と一覧退避のため shell を使用
-        - name: "Save RPM package list after removal and generate diff"
+        # 削除後の RPM 一覧を退避するため shell を使用
+        - name: "Save RPM package list after removal"
           ansible.builtin.shell: >-
-            rpm -qa | sort -n > {{ patch_evidence_dir }}/rpm_qa_after
-            diff -u {{ patch_evidence_dir }}/rpm_qa_before {{ patch_evidence_dir }}/rpm_qa_after || true
+            rpm -qa | sort -n > "{{ patch_evidence_dir }}/rpm_qa_after"
+          changed_when: false
+
+        # 事前・事後 RPM リストの差分を確認するため shell を使用
+        - name: "Generate RPM package diff after removal"
+          ansible.builtin.shell: >-
+            diff -u "{{ patch_evidence_dir }}/rpm_qa_before" "{{ patch_evidence_dir }}/rpm_qa_after" || true
           register: __rhel_pre_check_rpm_diff
           changed_when: false
 
@@ -140,7 +150,7 @@
           ansible.builtin.debug:
             msg:
               - "=== /boot 容量変化 ==="
-              - "削除前: {{ __rhel_pre_check_df_boot_before.stdout_lines[1] }}"
-              - "削除後: {{ __rhel_pre_check_df_boot_after.stdout_lines[1] }}"
+              - "削除前: {{ __rhel_pre_check_df_boot_before['stdout_lines'][1] }}"
+              - "削除後: {{ __rhel_pre_check_df_boot_after['stdout_lines'][1] }}"
               - "=== 削除された RPM パッケージ ==="
-              - "{{ __rhel_pre_check_rpm_diff.stdout_lines }}"
+              - "{{ __rhel_pre_check_rpm_diff['stdout_lines'] }}"

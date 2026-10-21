@@ -7,7 +7,7 @@
   changed_when: false
 
 - name: "Verify PostgreSQL related symlinks"
-  when: __rhel_pre_check_psql.rc == 0
+  when: __rhel_pre_check_psql['rc'] == 0
   block:
     # 複数シンボリックリンクのリンク先一覧を一括取得するため command を使用
     - name: "List PostgreSQL symlinks under /bin"
@@ -21,10 +21,10 @@
 
     - name: "Save PostgreSQL symlinks under /bin to evidence file"
       ansible.builtin.copy:
-        content: "{{ __rhel_pre_check_pg_link_bin.stdout }}\n"
+        content: "{{ __rhel_pre_check_pg_link_bin['stdout'] }}\n"
         dest: "{{ patch_evidence_dir }}/pg_link_bin_before"
         mode: "0644"
-      when: __rhel_pre_check_pg_link_bin.stdout | length > 0
+      when: __rhel_pre_check_pg_link_bin['stdout'] | length > 0
 
     # 複数シンボリックリンクのリンク先一覧を一括取得するため command を使用
     - name: "List PostgreSQL symlinks under /usr/bin"
@@ -38,12 +38,12 @@
 
     - name: "Save PostgreSQL symlinks under /usr/bin to evidence file"
       ansible.builtin.copy:
-        content: "{{ __rhel_pre_check_pg_link_usr.stdout }}\n"
+        content: "{{ __rhel_pre_check_pg_link_usr['stdout'] }}\n"
         dest: "{{ patch_evidence_dir }}/pg_link_usr_before"
         mode: "0644"
-      when: __rhel_pre_check_pg_link_usr.stdout | length > 0
+      when: __rhel_pre_check_pg_link_usr['stdout'] | length > 0
 
 - name: "Display skip message when PostgreSQL is not installed"
   ansible.builtin.debug:
     msg: "PostgreSQL is not installed. Skipping PostgreSQL link check."
-  when: __rhel_pre_check_psql.rc != 0
+  when: __rhel_pre_check_psql['rc'] != 0

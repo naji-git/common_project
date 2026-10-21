@@ -54,8 +54,6 @@
       ansible.builtin.file:
         path: "{{ __rhel_cleanup_archive_dir }}"
         state: directory
-        owner: infra
-        group: infra
         mode: "0755"
 
     # rhel_patch 配下の内容物を退避先へ移動

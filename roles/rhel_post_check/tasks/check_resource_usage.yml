@@ -161,13 +161,13 @@
         sign = "+" if diff > 0 else ""
         return f"パッチ適用前: {before:.1f}% -> パッチ適用後: {after:.1f}% (増減: {sign}{diff:.1f}pt)"
 
-    print(f"=== CPU使用率 (作成時刻 {cpu_before_time} -> 現在 {now_time}) ===")
+    print(f"=== CPU使用率")
     print(format_diff(cpu_before_val, cpu_after_val))
 
-    print(f"=== メモリ使用率 (作成時刻 {mem_before_time} -> 現在 {now_time}) ===")
+    print(f"=== メモリ使用率")
     print(format_diff(mem_before_val, mem_after_val))
 
-    print("=== ディスク(/)使用率 (disk_usage_before -> disk_usage_after) ===")
+    print("=== ディスク(/)使用率")
     print(format_diff(disk_before_val, disk_after_val))
     EOF
   register: __rhel_post_check_comparison_result

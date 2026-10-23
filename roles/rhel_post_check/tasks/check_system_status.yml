@@ -234,12 +234,12 @@
       if b_stat == 'N':
         a_stat = after.get(service, '未検出/停止')
         if a_stat != 'N':
-          not_n_services.append(f"【非N状態検知】 サービス名: {service} (事前: [{b_stat}] --> 事後: [{a_stat}])")
+          not_n_services.append(f"【非N状態検知】 プロセス名: {service} (事前: [{b_stat}] --> 事後: [{a_stat}])")
     if not_n_services:
       print("\n".join(not_n_services))
-      print("→ 対応: 対象サービスの稼働状況を確認し、停止している場合は起動してください (例: systemctl status <サービス名>)")
+      print("→ 対応: 対象プロセスの稼働状況を確認し、停止している場合は起動してください")
     else:
-      print("正常 (事前でNのサービスはすべて事後もNです)")
+      print("正常 (事前でNのプロセスはすべて事後もNです)")
     EOF
   register: __rhel_post_check_process_status_check
   changed_when: false

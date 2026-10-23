@@ -30,7 +30,7 @@
  
 - name: "Display message if SAM filtered log file does not exist"
   ansible.builtin.debug:
-    msg: "[INFO] 本日のSAM監視ログファイル (/usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_post_check_today_compact }}.log) は存在しません。"
+    msg: "[WARNING] SAM監視ログファイルが存在しません (/usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_post_check_today_compact }}.log)。ファイルの存在有無を確認してください。"
   when: not (__rhel_post_check_sam_log_stat['stat']['exists'] | bool)
  
 # ==================================================

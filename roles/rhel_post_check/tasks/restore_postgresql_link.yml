@@ -54,7 +54,7 @@
  
     - name: "Display skip message when PostgreSQL symlinks evidence file under /bin does not exist"
       ansible.builtin.debug:
-        msg: "[WARNING] {{ item['item'] }} が存在しません ({{ patch_evidence_dir }}/{{ item['item'] }})。比較確認処理をスキップします、ファイルの存在有無を確認してください。"
+        msg: "[WARNING] {{ item['item'] }} が存在しません ({{ patch_evidence_dir }}/{{ item['item'] }})。比較確認処理とリンク復旧処理をスキップします、ファイルの存在有無を確認してください。"
       loop: "{{ __rhel_post_check_pg_link_bin_stats['results'] }}"
       loop_control:
         label: "{{ item['item'] }}"
@@ -237,4 +237,3 @@
   ansible.builtin.debug:
     msg: "PostgreSQL未導入のため処理をスキップします。"
   when: __rhel_post_check_psql['rc'] != 0
-

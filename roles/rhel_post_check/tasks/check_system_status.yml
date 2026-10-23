@@ -229,17 +229,25 @@
       return data
     before = parse_proc_file(before_file)
     after = parse_proc_file(after_file)
-    not_n_services = []
+    changed_services = []
+    from_n_changed = False
+    other_changed = False
     for service, b_stat in before.items():
-      if b_stat == 'N':
-        a_stat = after.get(service, '未検出/停止')
-        if a_stat != 'N':
-          not_n_services.append(f"【非N状態検知】 プロセス名: {service} (事前: [{b_stat}] --> 事後: [{a_stat}])")
-    if not_n_services:
-      print("\n".join(not_n_services))
-      print("→ 対応: 対象プロセスの稼働状況を確認し、停止している場合は起動してください")
+      a_stat = after.get(service, '未検出/停止')
+      if a_stat != b_stat:
+        changed_services.append(f"【ステータス変更検知】 プロセス名: {service} (事前: [{b_stat}] --> 事後: [{a_stat}])")
+        if b_stat == 'N':
+          from_n_changed = True
+        else:
+          other_changed = True
+    if changed_services:
+      print("\n".join(changed_services))
+      if from_n_changed:
+        print("→ 対応 (事前N): 対象プロセスの稼働状況を確認し、停止している場合は起動してください")
+      if other_changed:
+        print("→ 対応 (事前N以外): 対象プロセスの稼働状況を確認し、起動している場合はエスカレーションしてください")
     else:
-      print("正常 (事前でNのプロセスはすべて事後もNです)")
+      print("正常 (事前・事後でプロセスのステータス変更はありません)")
     EOF
   register: __rhel_post_check_process_status_check
   changed_when: false

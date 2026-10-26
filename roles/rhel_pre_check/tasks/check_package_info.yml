@@ -103,10 +103,11 @@
       loop: "{{ __rhel_pre_check_enabled_repos['stdout_lines'] }}"
 
 - name: "Verify all repositories are disabled"
-  ansible.builtin.command: yum repolist enabled
+  ansible.builtin.command: yum repolist all
   register: __rhel_pre_check_repolist_result
   changed_when: false
+  # 出力一覧に "enabled" ステータスが1件も残っていないことを判定
   failed_when: >-
-    ('repolist: 0' not in __rhel_pre_check_repolist_result['stdout']) and
-    ('repolist: 0' not in __rhel_pre_check_repolist_result['stderr']) and
-    ('This system is not registered' not in __rhel_pre_check_repolist_result['stderr'])
+    __rhel_pre_check_repolist_result['stdout_lines'] |
+    select('match', '^.*(enabled:|\senabled\s).*$') |
+    list | length > 0

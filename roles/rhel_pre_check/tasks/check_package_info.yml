@@ -74,3 +74,39 @@
     content: "{{ __rhel_pre_check_rpm_qa_result['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/rpm_qa_before"
     mode: "0644"
+
+# --------------------------------------------------
+# 4. yumリポジトリ参照設定確認・修正
+# --------------------------------------------------
+- name: "Search repo files containing enabled=1"
+  ansible.builtin.shell: >-
+    grep -l '^\s*enabled\s*=\s*1' /etc/yum.repos.d/*.repo || true
+  register: __rhel_pre_check_enabled_repos
+  changed_when: false
+
+- name: "Backup and disable repositories when enabled=1 exists"
+  when: __rhel_pre_check_enabled_repos['stdout_lines'] | length > 0
+  block:
+    - name: "Backup repo files to evidence directory before modification"
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ patch_evidence_dir }}/{{ item | basename }}_before"
+        remote_src: true
+        mode: "0644"
+      loop: "{{ __rhel_pre_check_enabled_repos['stdout_lines'] }}"
+
+    - name: "Disable repositories by changing enabled=1 to enabled=0"
+      ansible.builtin.replace:
+        path: "{{ item }}"
+        regexp: '^(\s*enabled\s*=\s*)1'
+        replace: '\g<1>0'
+      loop: "{{ __rhel_pre_check_enabled_repos['stdout_lines'] }}"
+
+- name: "Verify all repositories are disabled"
+  ansible.builtin.command: yum repolist enabled
+  register: __rhel_pre_check_repolist_result
+  changed_when: false
+  failed_when: >-
+    ('repolist: 0' not in __rhel_pre_check_repolist_result['stdout']) and
+    ('repolist: 0' not in __rhel_pre_check_repolist_result['stderr']) and
+    ('This system is not registered' not in __rhel_pre_check_repolist_result['stderr'])

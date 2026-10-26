@@ -113,7 +113,7 @@
       - "=== Java バージョン比較 ==="
       - "作業前: {{ __rhel_post_check_java_ver_before }}"
       - "作業後: {{ __rhel_post_check_java_ver_after }}"
-      - "変更有無: {{ 'java_info_before が存在しないため比較をスキップしました' if not (__rhel_post_check_java_info_before_stat['stat']['exists'] | bool) else ('変更あり (バージョンアップ検知)' if (__rhel_post_check_java_ver_before != __rhel_post_check_java_ver_after and __rhel_post_check_java_ver_before != '取得失敗またはファイルなし') else '変更なし') }}"
+      - "変更有無: {{ 'java_info_before が存在しないため比較をスキップしました' if not (__rhel_post_check_java_info_before_stat['stat']['exists'] | bool) else ('変更あり' if (__rhel_post_check_java_ver_before != __rhel_post_check_java_ver_after and __rhel_post_check_java_ver_before != '取得失敗またはファイルなし') else '変更なし') }}"
  
 # --------------------------------------------------
 # 2. カーネルバージョンの比較・表示
@@ -135,7 +135,7 @@
       - "=== Kernel Version 比較 ==="
       - "作業前: {{ (__rhel_post_check_kernel_before_b64['content'] | b64decode | trim) if (__rhel_post_check_kernel_before_stat['stat']['exists'] | bool) else '取得失敗またはファイルなし' }}"
       - "作業後: {{ __rhel_post_check_kernel_version['stdout'] | trim }}"
-      - "変更有無: {{ 'kernel_version_before が存在しないため比較をスキップしました' if not (__rhel_post_check_kernel_before_stat['stat']['exists'] | bool) else ('変更あり (アップデート・再起動検知)' if ((__rhel_post_check_kernel_before_b64['content'] | b64decode | trim) != (__rhel_post_check_kernel_version['stdout'] | trim)) else '変更なし') }}"
+      - "変更有無: {{ 'kernel_version_before が存在しないため比較をスキップしました' if not (__rhel_post_check_kernel_before_stat['stat']['exists'] | bool) else ('変更あり' if ((__rhel_post_check_kernel_before_b64['content'] | b64decode | trim) != (__rhel_post_check_kernel_version['stdout'] | trim)) else '変更なし') }}"
  
 # --------------------------------------------------
 # 3. サービス自動起動設定（unit-files）の差分抽出・表示

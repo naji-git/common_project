@@ -55,3 +55,20 @@
     msg: "[WARNING] rpm_qa_before が存在しません ({{ patch_evidence_dir }}/rpm_qa_before)。パッケージ差分の比較をスキップします。事前確認の実施有無を確認してください。"
   when: not (__rhel_post_check_rpm_qa_before_stat['stat']['exists'] | bool)
 
+# --------------------------------------------------
+# 3. yumリポジトリ参照設定戻し
+# --------------------------------------------------
+- name: "Find backup repo files in evidence directory"
+  ansible.builtin.find:
+    paths: "{{ patch_evidence_dir }}"
+    patterns: "*.repo_before"
+  register: __rhel_post_check_backup_repo_files
+
+- name: "Restore repo files from backup"
+  ansible.builtin.copy:
+    src: "{{ item['path'] }}"
+    dest: "/etc/yum.repos.d/{{ item['path'] | basename | regex_replace('_before$', '') }}"
+    remote_src: true
+    mode: "0644"
+  loop: "{{ __rhel_post_check_backup_repo_files['files'] }}"
+  when: __rhel_post_check_backup_repo_files['matched'] > 0

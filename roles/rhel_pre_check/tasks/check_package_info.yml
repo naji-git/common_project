@@ -39,13 +39,6 @@
     - __rhel_pre_check_check_exclude['found'] is defined
     - __rhel_pre_check_check_exclude['found'] > 0
   block:
-    - name: "Backup original package manager configuration file"
-      ansible.builtin.copy:
-        src: "{{ __rhel_pre_check_target_pkg_conf }}"
-        dest: "{{ __rhel_pre_check_target_pkg_conf }}_{{ ansible_facts['date_time']['date'] | replace('-', '') }}"
-        remote_src: true
-        mode: preserve
-
     - name: "Update installonly_limit value to 2"
       ansible.builtin.lineinfile:
         path: "{{ __rhel_pre_check_target_pkg_conf }}"

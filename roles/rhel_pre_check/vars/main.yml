@@ -1,1 +1,5 @@
-patch_evidence_dir: "/home/infra/rhel_patch"
+# パッチ作業ベースディレクトリ
+patch_base_dir: "/home/infra"
+
+#パッチ作業ディレクトリ（ベースディレクトリ配下として定義）
+patch_evidence_dir: "{{ patch_base_dir }}/rhel_patch"

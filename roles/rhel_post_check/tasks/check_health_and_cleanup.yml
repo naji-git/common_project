@@ -4,12 +4,12 @@
 # ==================================================
 - name: "Remove patch storage directory"
   ansible.builtin.file:
-    path: "/home/infra/patch"
+    path: "{{ patch_storage_dir }}"
     state: absent
  
 - name: "Verify patch storage directory is removed"
   ansible.builtin.stat:
-    path: "/home/infra/patch"
+    path: "{{ patch_storage_dir }}"
   register: __rhel_post_check_patch_dir_stat
  
 - name: "Assert patch storage directory does not exist"
@@ -17,15 +17,15 @@
     that:
       - not __rhel_post_check_patch_dir_stat['stat']['exists']
     fail_msg: >-
-      [ERROR] /home/infra/patch の削除に失敗しました。ファイルが他プロセスに使用されていないか、パーミッションを確認して手動で削除してください。
-    success_msg: "[OK] /home/infra/patch は正常に削除されました。"
+      [ERROR] {{ patch_storage_dir }} の削除に失敗しました。ファイルが他プロセスに使用されていないか、パーミッションを確認して手動で削除してください。
+    success_msg: "[OK] {{ patch_storage_dir }} は正常に削除されました。"
  
 # ==================================================
 # 2. パッチ作業ディレクトリのリネーム退避
 # ==================================================
 - name: "Find patch_mythos directories or files"
   ansible.builtin.find:
-    paths: "/home/infra"
+    paths: "{{ patch_base_dir }}"
     patterns: "patch_mythos*"
     file_type: any
   register: __rhel_post_check_mythos_targets
@@ -43,7 +43,7 @@
  
 - name: "Archive and cleanup patch_evidence_dir directory"
   vars:
-    __rhel_post_check_archive_dir: "/home/infra/{{ patch_work_year }}_{{ patch_delivery_month }}_old"
+    __rhel_post_check_archive_dir: "{{ patch_base_dir }}/{{ patch_work_year }}_{{ patch_delivery_month }}_old"
   when: __rhel_post_check_rhel_patch_stat['stat']['exists'] | bool
   block:
  
@@ -82,7 +82,7 @@
 # ==================================================
 - name: "Find existing archive directories"
   ansible.builtin.find:
-    paths: "/home/infra"
+    paths: "{{ patch_base_dir }}"
     file_type: directory
     patterns: "^[0-9]{4}_[0-9]{2}_old$"
     use_regex: true

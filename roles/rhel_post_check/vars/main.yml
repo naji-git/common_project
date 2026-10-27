@@ -1,5 +1,11 @@
-#パッチ作業ディレクトリ
-patch_evidence_dir: "/home/infra/rhel_patch"
+# パッチ作業ベースディレクトリ
+patch_base_dir: "/home/infra"
+
+# パッチ格納ディレクトリ（ベースディレクトリ配下として定義）
+patch_storage_dir: "{{ patch_base_dir }}/patch"
+
+#パッチ作業ディレクトリ（ベースディレクトリ配下として定義）
+patch_evidence_dir: "{{ patch_base_dir }}/rhel_patch"
 
 # 作業年度およびパッチ提供月
 patch_work_year: "2026"

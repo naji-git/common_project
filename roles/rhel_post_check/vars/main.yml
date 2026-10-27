@@ -1,5 +1,5 @@
 # パッチ作業ベースディレクトリ
-patch_base_dir: "/home/infra"
+patch_base_dir: "/home/ansible"
 
 # パッチ格納ディレクトリ（ベースディレクトリ配下として定義）
 patch_storage_dir: "{{ patch_base_dir }}/patch"

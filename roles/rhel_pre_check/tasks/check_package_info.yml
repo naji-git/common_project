@@ -28,12 +28,12 @@
 - name: "Check if commented-out exclude directive exists"
   ansible.builtin.lineinfile:
     path: "{{ __rhel_pre_check_target_pkg_conf }}"
-    regexp: '^#exclude=kernel\* redhat-release\*$'
+    regexp: '^\s*[#;]+\s*exclude\s*=.*kernel.*'
     state: absent
   check_mode: true
   register: __rhel_pre_check_check_exclude
   changed_when: false
- 
+
 - name: "Modify package manager configuration when commented-out exclude is present"
   when:
     - __rhel_pre_check_check_exclude['found'] is defined
@@ -45,11 +45,11 @@
         regexp: '^\s*installonly_limit\s*='
         line: "installonly_limit=2"
         state: present
- 
+
     - name: "Uncomment exclude directive in configuration file"
       ansible.builtin.replace:
         path: "{{ __rhel_pre_check_target_pkg_conf }}"
-        regexp: '^#(exclude=kernel\* redhat-release\*)$'
+        regexp: '^\s*[#;]+\s*(exclude\s*=.*kernel.*)'
         replace: '\1'
 
 # --------------------------------------------------

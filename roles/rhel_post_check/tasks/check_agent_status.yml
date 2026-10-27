@@ -120,7 +120,7 @@
           {{
            '[OK] CrowdStrike Falcon の RFM ステータスは正常 (rfm-state=false.) です。'
            if ('rfm-state=false.' in __rhel_post_check_rfm_result['stdout'])
-           else '[WARNING] CrowdStrike Falcon の RFM ステータス異常を検知しました: ' ~ (__rhel_post_check_rfm_result['stdout'] | trim) ~ '。systemctl status jp1_base / jp1_ajs3 を確認してください'
+           else '[WARNING] CrowdStrike Falcon の RFM ステータス異常を検知しました: ' ~ (__rhel_post_check_rfm_result['stdout'] | trim) ~ '。systemctl status falcon-sensor を確認してください'
           }}
  
 - name: "Display skip message when falconctl is not installed"
@@ -194,6 +194,6 @@
       - "=================================================="
       - "SAM Log Check   : msg_filtered_{{ __rhel_post_check_today_compact }}.logの内容を確認"
       - "JP1 Services    : {{ 'FAILED TO START : systemctl status jp1_base / jp1_ajs3 を確認してください' if ((__rhel_post_check_jp1_base_start['failed'] | default(false)) or (__rhel_post_check_jp1_ajs3_start['failed'] | default(false))) else ('OK' if (__rhel_post_check_jp1_stats['results'][0]['stat']['exists'] | default(false)) else 'SKIPPED') }}"
-      - "CrowdStrike RFM  : {{ 'OK' if ('rfm-state=false.' in (__rhel_post_check_rfm_result['stdout'] | default(''))) else ('WARNING (Not false) : systemctl status jp1_base / jp1_ajs3 を確認してください' if (__rhel_post_check_falconctl_stat['stat']['exists'] | default(false)) else 'SKIPPED') }}"
+      - "CrowdStrike RFM  : {{ 'OK' if ('rfm-state=false.' in (__rhel_post_check_rfm_result['stdout'] | default(''))) else ('WARNING (Not false) : systemctl status falcon-sensor を確認してください' if (__rhel_post_check_falconctl_stat['stat']['exists'] | default(false)) else 'SKIPPED') }}"
       - "DISABLE Files Purge: {{ 'PURGED (' ~ (__rhel_post_check_removed_disable_files['results'] | default([]) | selectattr('changed', 'equalto', true) | list | length) ~ ' files)' if (__rhel_post_check_disable_files['files'] | default([]) | length > 0) else 'NONE' }}"
       - "=================================================="

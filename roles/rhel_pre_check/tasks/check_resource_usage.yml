@@ -1,3 +1,80 @@
+---
+# --------------------------------------------------
+# 0.事前確認エビデンスディレクトリの準備（既存退避 & 新規作成）
+# --------------------------------------------------
+- name: "Check if evidence directory already exists"
+  ansible.builtin.stat:
+    path: "{{ patch_evidence_dir }}"
+  register: __rhel_pre_check_existing_evidence_dir
+ 
+- name: "Backup and rename existing evidence directory"
+  when: __rhel_pre_check_existing_evidence_dir['stat']['exists'] | bool
+  block:
+    # 既存ディレクトリをタイムスタンプ付きでリネーム退避するため command を使用
+    - name: "Rename existing evidence directory with timestamp"
+      ansible.builtin.command: >-
+        mv "{{ patch_evidence_dir }}" "{{ patch_evidence_dir }}_backup_{{ ansible_facts['date_time']['iso8601_basic_short'] }}"
+      register: __rhel_pre_check_backup_result
+      changed_when: true
+ 
+    - name: "Display message for renamed evidence directory"
+      ansible.builtin.debug:
+        msg: "[NOTICE] 前回の作業ディレクトリが残っていたため、バックアップとしてリネーム退避しました: {{ patch_evidence_dir }}_backup_{{ ansible_facts['date_time']['iso8601_basic_short'] }}"
+ 
+- name: "Create fresh evidence directory for pre-check"
+  ansible.builtin.file:
+    path: "{{ patch_evidence_dir }}"
+    state: directory
+    mode: "0755"
+ 
+# ==================================================
+# 事前リソース使用状況の確認
+# ==================================================
+# --------------------------------------------------
+# 1. CPU使用率確認
+# --------------------------------------------------
+# 過去ログを含めた sar 全体出力をエビデンス化するため command を使用
+- name: "Get sar CPU usage logs before patch"
+  ansible.builtin.command: sar -u
+  register: __rhel_pre_check_cpu_usage
+  changed_when: false
+ 
+- name: "Save CPU usage logs to evidence file"
+  ansible.builtin.copy:
+    content: "{{ __rhel_pre_check_cpu_usage['stdout'] }}\n"
+    dest: "{{ patch_evidence_dir }}/cpu_usage_before"
+    mode: "0644"
+ 
+# --------------------------------------------------
+# 2. メモリ使用率確認
+# --------------------------------------------------
+# 当日の sar メモリログ全体をエビデンス化（CPUの sar -u と粒度を統一）するため command を使用
+- name: "Get sar memory usage logs before patch"
+  ansible.builtin.command: sar -r
+  register: __rhel_pre_check_mem_usage
+  changed_when: false
+ 
+- name: "Save memory usage logs to evidence file"
+  ansible.builtin.copy:
+    content: "{{ __rhel_pre_check_mem_usage['stdout'] }}\n"
+    dest: "{{ patch_evidence_dir }}/mem_usage_before"
+    mode: "0644"
+ 
+# --------------------------------------------------
+# 3. ディスク使用率確認
+# --------------------------------------------------
+# システム全体のディスク構成・使用状況をエビデンス化するため command を使用
+- name: "Get disk usage logs before patch"
+  ansible.builtin.command: df -h
+  register: __rhel_pre_check_disk_usage
+  changed_when: false
+ 
+- name: "Save disk usage logs to evidence file"
+  ansible.builtin.copy:
+    content: "{{ __rhel_pre_check_disk_usage['stdout'] }}\n"
+    dest: "{{ patch_evidence_dir }}/disk_usage_before"
+    mode: "0644"
+ 
 # ==================================================
 # 4. RHEL 7 専用: /boot 容量確保 (kernel-debug 削除)
 # 対象: RHEL 7 かつ ホスト名が "SV" から始まる仮想基盤のサーバ
@@ -51,18 +128,20 @@
         - name: "Remove existing kernel-debug packages if installed"
           when: __rhel_installed_kernel_debug_pkgs | length > 0
           block:
-            # 削除前の /boot 空き容量を取得 (MB単位)
+            # 削除前の /boot 空き容量を取得 (MB単位: /boot が単独マウントされていなければ / を参照)
             - name: "Record /boot free space before removal"
               ansible.builtin.set_fact:
                 __rhel_boot_free_mb_before: >-
                   {{
                     (
                       (
-                        ansible_facts['mounts']
-                        | selectattr('mount', 'equalto', '/boot')
-                        | map(attribute='size_available')
-                        | first
-                      ) / 1024 / 1024
+                        (ansible_facts['mounts'] | selectattr('mount', 'equalto', '/boot') | list)
+                        or
+                        (ansible_facts['mounts'] | selectattr('mount', 'equalto', '/') | list)
+                      )
+                      | map(attribute='size_available')
+                      | first
+                      / 1024 / 1024
                     ) | round(2)
                   }}
 
@@ -88,18 +167,20 @@
               ansible.builtin.package_facts:
                 manager: rpm
 
-            # 削除後の /boot 空き容量を取得 (MB単位)
+            # 削除後の /boot 空き容量を取得 (MB単位: /boot が単独マウントされていなければ / を参照)
             - name: "Record /boot free space after removal"
               ansible.builtin.set_fact:
                 __rhel_boot_free_mb_after: >-
                   {{
                     (
                       (
-                        ansible_facts['mounts']
-                        | selectattr('mount', 'equalto', '/boot')
-                        | map(attribute='size_available')
-                        | first
-                      ) / 1024 / 1024
+                        (ansible_facts['mounts'] | selectattr('mount', 'equalto', '/boot') | list)
+                        or
+                        (ansible_facts['mounts'] | selectattr('mount', 'equalto', '/') | list)
+                      )
+                      | map(attribute='size_available')
+                      | first
+                      / 1024 / 1024
                     ) | round(2)
                   }}
 
@@ -122,7 +203,7 @@
             - name: "Display /boot cleanup results"
               ansible.builtin.debug:
                 msg:
-                  - "=== /boot 空き容量変化 ==="
+                  - "=== /boot (または /) 空き容量変化 ==="
                   - "削除前: {{ __rhel_boot_free_mb_before }} MB"
                   - "削除後: {{ __rhel_boot_free_mb_after }} MB"
                   - "=== 削除されたパッケージ ==="

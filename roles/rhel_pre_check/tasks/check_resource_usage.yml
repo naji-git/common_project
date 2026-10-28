@@ -115,7 +115,7 @@
           ansible.builtin.package_facts:
             manager: rpm
 
-        # インストール済みの kernel-debug 関連パッケージ名を抽出
+        # インストール済みの kernel-debug 関連パッケージ名（削除用）を抽出
         - name: "Set fact for installed kernel-debug packages"
           ansible.builtin.set_fact:
             __rhel_installed_kernel_debug_pkgs: >-
@@ -145,15 +145,22 @@
                     ) | round(2)
                   }}
 
-            # 削除前の全パッケージリスト（rpm -qa 相当のフルネーム）を保存
+            # 削除前の全パッケージリスト（テキスト用リスト変数作成）
+            - name: "Build package full names list before removal"
+              ansible.builtin.set_fact:
+                __rhel_pkgs_list_before: >-
+                  [
+                    {% for pkg_name, pkg_list in ansible_facts['packages'] | dictsort %}
+                    {% for item in pkg_list %}
+                    "{{ pkg_name }}-{{ item.version }}-{{ item.release }}.{{ item.arch }}",
+                    {% endfor %}
+                    {% endfor %}
+                  ]
+
+            # 削除前の全パッケージリスト（エビデンスファイル出力）
             - name: "Save package list before removal"
               ansible.builtin.copy:
-                content: |
-                  {% for pkg_name, pkg_list in ansible_facts['packages'] | dictsort %}
-                  {% for item in pkg_list %}
-                  {{ pkg_name }}-{{ item.version }}-{{ item.release }}.{{ item.arch }}
-                  {% endfor %}
-                  {% endfor %}
+                content: "{{ __rhel_pkgs_list_before | join('\n') }}\n"
                 dest: "{{ patch_evidence_dir }}/supports_boot_rpm_qa_before"
                 mode: "0644"
 
@@ -191,25 +198,31 @@
                     ) | round(2)
                   }}
 
-            # 削除後の全パッケージリスト（rpm -qa 相当のフルネーム）を保存
+            # 削除後の全パッケージリスト（テキスト用リスト変数作成）
+            - name: "Build package full names list after removal"
+              ansible.builtin.set_fact:
+                __rhel_pkgs_list_after: >-
+                  [
+                    {% for pkg_name, pkg_list in ansible_facts['packages'] | dictsort %}
+                    {% for item in pkg_list %}
+                    "{{ pkg_name }}-{{ item.version }}-{{ item.release }}.{{ item.arch }}",
+                    {% endfor %}
+                    {% endfor %}
+                  ]
+
+            # 削除後の全パッケージリスト（エビデンスファイル出力）
             - name: "Save package list after removal"
               ansible.builtin.copy:
-                content: |
-                  {% for pkg_name, pkg_list in ansible_facts['packages'] | dictsort %}
-                  {% for item in pkg_list %}
-                  {{ pkg_name }}-{{ item.version }}-{{ item.release }}.{{ item.arch }}
-                  {% endfor %}
-                  {% endfor %}
+                content: "{{ __rhel_pkgs_list_after | join('\n') }}\n"
                 dest: "{{ patch_evidence_dir }}/supports_boot_rpm_qa_after"
                 mode: "0644"
 
-            # エビデンス用の差分抽出（事前リストにあって事後リストにないものを抽出）
+            # 変数同士の差分抽出（ホスト側のファイルアクセスを一切行わないため失敗しない）
             - name: "Set fact for removed packages diff"
               ansible.builtin.set_fact:
                 __rhel_removed_pkgs: >-
                   {{
-                    lookup('file', patch_evidence_dir ~ '/supports_boot_rpm_qa_before').splitlines()
-                    | difference(lookup('file', patch_evidence_dir ~ '/supports_boot_rpm_qa_after').splitlines())
+                    __rhel_pkgs_list_before | difference(__rhel_pkgs_list_after)
                   }}
 
             - name: "Display /boot cleanup results"

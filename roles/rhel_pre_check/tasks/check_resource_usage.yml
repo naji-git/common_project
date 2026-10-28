@@ -115,7 +115,7 @@
           ansible.builtin.package_facts:
             manager: rpm
 
-        # インストール済みの kernel-debug 関連パッケージ名（削除用）を抽出
+        # インストール済みの kernel-debug 関連パッケージ名を抽出
         - name: "Set fact for installed kernel-debug packages"
           ansible.builtin.set_fact:
             __rhel_installed_kernel_debug_pkgs: >-
@@ -157,11 +157,11 @@
                 dest: "{{ patch_evidence_dir }}/supports_boot_rpm_qa_before"
                 mode: "0644"
 
-            # Python のバージョン（2 / 3）差分を回避するため rpm -e で確実に削除
+            # 複数世代が共存していても全削除できるよう --allmatches を指定
             - name: "Remove installed kernel-debug packages"
               ansible.builtin.command:
                 argv: >-
-                  {{ ['rpm', '-e'] + __rhel_installed_kernel_debug_pkgs }}
+                  {{ ['rpm', '-e', '--allmatches'] + __rhel_installed_kernel_debug_pkgs }}
               register: __rhel_rpm_remove_result
               changed_when: __rhel_rpm_remove_result.rc == 0
 

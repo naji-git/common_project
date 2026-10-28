@@ -1,80 +1,3 @@
----
-# --------------------------------------------------
-# 0.事前確認エビデンスディレクトリの準備（既存退避 & 新規作成）
-# --------------------------------------------------
-- name: "Check if evidence directory already exists"
-  ansible.builtin.stat:
-    path: "{{ patch_evidence_dir }}"
-  register: __rhel_pre_check_existing_evidence_dir
- 
-- name: "Backup and rename existing evidence directory"
-  when: __rhel_pre_check_existing_evidence_dir['stat']['exists'] | bool
-  block:
-    # 既存ディレクトリをタイムスタンプ付きでリネーム退避するため command を使用
-    - name: "Rename existing evidence directory with timestamp"
-      ansible.builtin.command: >-
-        mv "{{ patch_evidence_dir }}" "{{ patch_evidence_dir }}_backup_{{ ansible_facts['date_time']['iso8601_basic_short'] }}"
-      register: __rhel_pre_check_backup_result
-      changed_when: true
- 
-    - name: "Display message for renamed evidence directory"
-      ansible.builtin.debug:
-        msg: "[NOTICE] 前回の作業ディレクトリが残っていたため、バックアップとしてリネーム退避しました: {{ patch_evidence_dir }}_backup_{{ ansible_facts['date_time']['iso8601_basic_short'] }}"
- 
-- name: "Create fresh evidence directory for pre-check"
-  ansible.builtin.file:
-    path: "{{ patch_evidence_dir }}"
-    state: directory
-    mode: "0755"
- 
-# ==================================================
-# 事前リソース使用状況の確認
-# ==================================================
-# --------------------------------------------------
-# 1. CPU使用率確認
-# --------------------------------------------------
-# 過去ログを含めた sar 全体出力をエビデンス化するため command を使用
-- name: "Get sar CPU usage logs before patch"
-  ansible.builtin.command: sar -u
-  register: __rhel_pre_check_cpu_usage
-  changed_when: false
- 
-- name: "Save CPU usage logs to evidence file"
-  ansible.builtin.copy:
-    content: "{{ __rhel_pre_check_cpu_usage['stdout'] }}\n"
-    dest: "{{ patch_evidence_dir }}/cpu_usage_before"
-    mode: "0644"
- 
-# --------------------------------------------------
-# 2. メモリ使用率確認
-# --------------------------------------------------
-# 当日の sar メモリログ全体をエビデンス化（CPUの sar -u と粒度を統一）するため command を使用
-- name: "Get sar memory usage logs before patch"
-  ansible.builtin.command: sar -r
-  register: __rhel_pre_check_mem_usage
-  changed_when: false
- 
-- name: "Save memory usage logs to evidence file"
-  ansible.builtin.copy:
-    content: "{{ __rhel_pre_check_mem_usage['stdout'] }}\n"
-    dest: "{{ patch_evidence_dir }}/mem_usage_before"
-    mode: "0644"
- 
-# --------------------------------------------------
-# 3. ディスク使用率確認
-# --------------------------------------------------
-# システム全体のディスク構成・使用状況をエビデンス化するため command を使用
-- name: "Get disk usage logs before patch"
-  ansible.builtin.command: df -h
-  register: __rhel_pre_check_disk_usage
-  changed_when: false
- 
-- name: "Save disk usage logs to evidence file"
-  ansible.builtin.copy:
-    content: "{{ __rhel_pre_check_disk_usage['stdout'] }}\n"
-    dest: "{{ patch_evidence_dir }}/disk_usage_before"
-    mode: "0644"
- 
 # ==================================================
 # 4. RHEL 7 専用: /boot 容量確保 (kernel-debug 削除)
 # 対象: RHEL 7 かつ ホスト名が "SV" から始まる仮想基盤のサーバ
@@ -96,11 +19,17 @@
     # 2. パッチディレクトリ内に kernel-debug パッケージが存在するか確認
     - name: "Check if kernel-debug RPM exists in patch directory"
       ansible.builtin.find:
-        paths: "/home/ansible/patch"
+        paths: "{{ patch_storage_dir }}"
         patterns: "kernel-debug-*.rpm"
       register: __rhel_patch_kernel_debug_files
 
-    # 3. パッチ配下に kernel-debug がある場合のみ処理を実施
+    # 3. パッチ配下に kernel-debug が存在しない場合のスキップメッセージ通知
+    - name: "Notify skip of /boot cleanup when kernel-debug RPM is not found"
+      when: __rhel_patch_kernel_debug_files.matched == 0
+      ansible.builtin.debug:
+        msg: "対象がRHEL 7の仮想基盤のサーバですが「{{ patch_storage_dir }}」に kernel-debugのパッケージがない為、/bootの空き容量処理はスキップします"
+
+    # 4. パッチ配下に kernel-debug がある場合のみ削除処理を実施
     - name: "Handle kernel-debug removal for /boot capacity"
       when: __rhel_patch_kernel_debug_files.matched > 0
       block:

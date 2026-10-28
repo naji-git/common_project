@@ -115,7 +115,7 @@
           ansible.builtin.package_facts:
             manager: rpm
 
-        # インストール済みの kernel-debug 関連パッケージを抽出
+        # インストール済みの kernel-debug 関連パッケージ名（削除用）を抽出
         - name: "Set fact for installed kernel-debug packages"
           ansible.builtin.set_fact:
             __rhel_installed_kernel_debug_pkgs: >-
@@ -145,20 +145,25 @@
                     ) | round(2)
                   }}
 
-            # 削除前の全パッケージリスト（エビデンス用）を出力
+            # 削除前の全パッケージリスト（rpm -qa 相当のフルネーム）を保存
             - name: "Save package list before removal"
               ansible.builtin.copy:
-                content: "{{ ansible_facts['packages'].keys() | sort | join('\n') }}\n"
+                content: |
+                  {% for pkg_name, pkg_list in ansible_facts['packages'] | dictsort %}
+                  {% for item in pkg_list %}
+                  {{ pkg_name }}-{{ item.version }}-{{ item.release }}.{{ item.arch }}
+                  {% endfor %}
+                  {% endfor %}
                 dest: "{{ patch_evidence_dir }}/supports_boot_rpm_qa_before"
                 mode: "0644"
 
-            # RHEL 7 の yum モジュールを動かすため、Python 2 を明示指定して実行
+            # Python のバージョン（2 / 3）差分を回避するため rpm -e で確実に削除
             - name: "Remove installed kernel-debug packages"
-              ansible.builtin.yum:
-                name: "{{ __rhel_installed_kernel_debug_pkgs }}"
-                state: absent
-              vars:
-                ansible_python_interpreter: /usr/bin/python2
+              ansible.builtin.command:
+                argv: >-
+                  {{ ['rpm', '-e'] + __rhel_installed_kernel_debug_pkgs }}
+              register: __rhel_rpm_remove_result
+              changed_when: __rhel_rpm_remove_result.rc == 0
 
             # 削除後のマウント情報とパッケージ情報を再収集
             - name: "Re-collect facts after removal"
@@ -186,10 +191,15 @@
                     ) | round(2)
                   }}
 
-            # 削除後の全パッケージリスト（エビデンス用）を出力
+            # 削除後の全パッケージリスト（rpm -qa 相当のフルネーム）を保存
             - name: "Save package list after removal"
               ansible.builtin.copy:
-                content: "{{ ansible_facts['packages'].keys() | sort | join('\n') }}\n"
+                content: |
+                  {% for pkg_name, pkg_list in ansible_facts['packages'] | dictsort %}
+                  {% for item in pkg_list %}
+                  {{ pkg_name }}-{{ item.version }}-{{ item.release }}.{{ item.arch }}
+                  {% endfor %}
+                  {% endfor %}
                 dest: "{{ patch_evidence_dir }}/supports_boot_rpm_qa_after"
                 mode: "0644"
 

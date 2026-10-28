@@ -152,9 +152,16 @@
                 dest: "{{ patch_evidence_dir }}/supports_boot_rpm_qa_before"
                 mode: "0644"
 
-            # kernel-debug パッケージを汎用 package モジュールで削除
-            - name: "Remove installed kernel-debug packages"
-              ansible.builtin.package:
+            # kernel-debug パッケージを削除 (Python 3 環境は DNF、Python 2 環境は YUM)
+            - name: "Remove installed kernel-debug packages (Python 3 / DNF)"
+              when: ansible_facts['python']['version']['major'] == 3
+              ansible.builtin.dnf:
+                name: "{{ __rhel_installed_kernel_debug_pkgs }}"
+                state: absent
+
+            - name: "Remove installed kernel-debug packages (Python 2 / YUM)"
+              when: ansible_facts['python']['version']['major'] == 2
+              ansible.builtin.yum:
                 name: "{{ __rhel_installed_kernel_debug_pkgs }}"
                 state: absent
 

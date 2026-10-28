@@ -84,75 +84,117 @@
     - ansible_facts['distribution_major_version'] == "7"
     - ansible_facts['hostname'] is match('^SV.*')
   block:
-    # 稼働中カーネルの名称を取得するため command を使用
-    - name: "Check running kernel release"
-      ansible.builtin.command: uname -r
-      register: __rhel_pre_check_current_kernel
-      changed_when: false
- 
+    # 1. 稼働中カーネルが debug ではないことを Facts で確認
     - name: "Assert running kernel is not a debug kernel"
       ansible.builtin.assert:
         that:
-          - "'debug' not in __rhel_pre_check_current_kernel['stdout']"
+          - "'debug' not in ansible_facts['kernel']"
         fail_msg: >-
-          [ERROR] 現在 kernel-debug で起動しているため削除できません。
+          [ERROR] 現在 kernel-debug ({{ ansible_facts['kernel'] }}) で起動しているため削除できません。
           grubby 等でデフォルトカーネルを通常カーネルに設定し、再起動後に作業を再実行してください。
- 
-    # パッケージの存在を正規表現で検出するため shell を使用（grep の終了コード1は該当なしのため正常）
-    - name: "Detect installed kernel-debug packages"
-      ansible.builtin.shell: >-
-        rpm -qa | grep -E '^kernel-debug-[0-9]'
-      register: __rhel_pre_check_installed_kernel_debug
-      changed_when: false
-      failed_when: __rhel_pre_check_installed_kernel_debug['rc'] > 1
- 
-    - name: "Remove kernel-debug packages if installed"
-      when: __rhel_pre_check_installed_kernel_debug['stdout'] | trim | length > 0
-      block:
-        # 削除前の /boot 領域サイズを確認するため command を使用
-        - name: "Check /boot disk space before removal"
-          ansible.builtin.command: df -h /boot
-          register: __rhel_pre_check_df_boot_before
-          changed_when: false
- 
-        # 削除前の RPM 一覧を退避するため shell を使用
-        - name: "Save RPM package list before removal"
-          ansible.builtin.shell: >-
-            rpm -qa | sort -n > "{{ patch_evidence_dir }}/rpm_qa_before"
-          changed_when: false
- 
-        # 専用モジュール ansible.builtin.yum を使用して冪等性を確保
-        - name: "Remove installed kernel-debug packages"
-          ansible.builtin.yum:
-            name: "{{ __rhel_pre_check_installed_kernel_debug['stdout_lines'] }}"
-            state: absent
- 
-        # 削除後の /boot 領域サイズを確認するため command を使用
-        - name: "Check /boot disk space after removal"
-          ansible.builtin.command: df -h /boot
-          register: __rhel_pre_check_df_boot_after
-          changed_when: false
- 
-        # 削除後の RPM 一覧を退避するため shell を使用
-        - name: "Save RPM package list after removal"
-          ansible.builtin.shell: >-
-            rpm -qa | sort -n > "{{ patch_evidence_dir }}/rpm_qa_after"
-          changed_when: false
- 
-        # 事前・事後 RPM リストの差分を確認するため shell を使用（diff の終了コード1は差分ありのため正常）
-        - name: "Generate RPM package diff after removal"
-          ansible.builtin.shell: >-
-            diff -u "{{ patch_evidence_dir }}/rpm_qa_before" "{{ patch_evidence_dir }}/rpm_qa_after"
-          register: __rhel_pre_check_rpm_diff
-          changed_when: false
-          failed_when: __rhel_pre_check_rpm_diff['rc'] > 1
- 
-        - name: "Display /boot cleanup results"
-          ansible.builtin.debug:
-            msg:
-              - "=== /boot 容量変化 ==="
-              - "削除前: {{ __rhel_pre_check_df_boot_before['stdout_lines'][1] }}"
-              - "削除後: {{ __rhel_pre_check_df_boot_after['stdout_lines'][1] }}"
-              - "=== 削除された RPM パッケージ ==="
-              - "{{ __rhel_pre_check_rpm_diff['stdout_lines'] }}"
 
+    # 2. パッチディレクトリ内に kernel-debug パッケージが存在するか確認
+    - name: "Check if kernel-debug RPM exists in patch directory"
+      ansible.builtin.find:
+        paths: "/home/ansible/patch"
+        patterns: "kernel-debug-*.rpm"
+      register: __rhel_patch_kernel_debug_files
+
+    # 3. パッチ配下に kernel-debug がある場合のみ処理を実施
+    - name: "Handle kernel-debug removal for /boot capacity"
+      when: __rhel_patch_kernel_debug_files.matched > 0
+      block:
+        # パッケージ情報を構造化データとして取得
+        - name: "Gather package facts before removal"
+          ansible.builtin.package_facts:
+            manager: rpm
+
+        # インストール済みの kernel-debug 関連パッケージを抽出
+        - name: "Set fact for installed kernel-debug packages"
+          ansible.builtin.set_fact:
+            __rhel_installed_kernel_debug_pkgs: >-
+              {{
+                ansible_facts['packages'].keys()
+                | select('match', '^kernel-debug.*')
+                | list
+              }}
+
+        - name: "Remove existing kernel-debug packages if installed"
+          when: __rhel_installed_kernel_debug_pkgs | length > 0
+          block:
+            # 削除前の /boot 空き容量を取得 (MB単位)
+            - name: "Record /boot free space before removal"
+              ansible.builtin.set_fact:
+                __rhel_boot_free_mb_before: >-
+                  {{
+                    (
+                      (
+                        ansible_facts['mounts']
+                        | selectattr('mount', 'equalto', '/boot')
+                        | map(attribute='size_available')
+                        | first
+                      ) / 1024 / 1024
+                    ) | round(2)
+                  }}
+
+            # 削除前の全パッケージリスト（エビデンス用）を出力
+            - name: "Save package list before removal"
+              ansible.builtin.copy:
+                content: "{{ ansible_facts['packages'].keys() | sort | join('\n') }}\n"
+                dest: "{{ patch_evidence_dir }}/supports_boot_rpm_qa_before"
+                mode: "0644"
+
+            # kernel-debug パッケージを汎用 package モジュールで削除
+            - name: "Remove installed kernel-debug packages"
+              ansible.builtin.package:
+                name: "{{ __rhel_installed_kernel_debug_pkgs }}"
+                state: absent
+
+            # 削除後のマウント情報とパッケージ情報を再収集
+            - name: "Re-collect facts after removal"
+              ansible.builtin.setup:
+                filter: "ansible_mounts"
+
+            - name: "Gather package facts after removal"
+              ansible.builtin.package_facts:
+                manager: rpm
+
+            # 削除後の /boot 空き容量を取得 (MB単位)
+            - name: "Record /boot free space after removal"
+              ansible.builtin.set_fact:
+                __rhel_boot_free_mb_after: >-
+                  {{
+                    (
+                      (
+                        ansible_facts['mounts']
+                        | selectattr('mount', 'equalto', '/boot')
+                        | map(attribute='size_available')
+                        | first
+                      ) / 1024 / 1024
+                    ) | round(2)
+                  }}
+
+            # 削除後の全パッケージリスト（エビデンス用）を出力
+            - name: "Save package list after removal"
+              ansible.builtin.copy:
+                content: "{{ ansible_facts['packages'].keys() | sort | join('\n') }}\n"
+                dest: "{{ patch_evidence_dir }}/supports_boot_rpm_qa_after"
+                mode: "0644"
+
+            # エビデンス用の差分抽出（事前リストにあって事後リストにないものを抽出）
+            - name: "Set fact for removed packages diff"
+              ansible.builtin.set_fact:
+                __rhel_removed_pkgs: >-
+                  {{
+                    lookup('file', patch_evidence_dir ~ '/supports_boot_rpm_qa_before').splitlines()
+                    | difference(lookup('file', patch_evidence_dir ~ '/supports_boot_rpm_qa_after').splitlines())
+                  }}
+
+            - name: "Display /boot cleanup results"
+              ansible.builtin.debug:
+                msg:
+                  - "=== /boot 空き容量変化 ==="
+                  - "削除前: {{ __rhel_boot_free_mb_before }} MB"
+                  - "削除後: {{ __rhel_boot_free_mb_after }} MB"
+                  - "=== 削除されたパッケージ ==="
+                  - "{{ __rhel_removed_pkgs }}"

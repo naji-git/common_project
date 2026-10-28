@@ -152,18 +152,13 @@
                 dest: "{{ patch_evidence_dir }}/supports_boot_rpm_qa_before"
                 mode: "0644"
 
-            # kernel-debug パッケージを削除 (Python 3 環境は DNF、Python 2 環境は YUM)
-            - name: "Remove installed kernel-debug packages (Python 3 / DNF)"
-              when: ansible_facts['python']['version']['major'] == 3
-              ansible.builtin.dnf:
-                name: "{{ __rhel_installed_kernel_debug_pkgs }}"
-                state: absent
-
-            - name: "Remove installed kernel-debug packages (Python 2 / YUM)"
-              when: ansible_facts['python']['version']['major'] == 2
+            # RHEL 7 の yum モジュールを動かすため、Python 2 を明示指定して実行
+            - name: "Remove installed kernel-debug packages"
               ansible.builtin.yum:
                 name: "{{ __rhel_installed_kernel_debug_pkgs }}"
                 state: absent
+              vars:
+                ansible_python_interpreter: /usr/bin/python2
 
             # 削除後のマウント情報とパッケージ情報を再収集
             - name: "Re-collect facts after removal"

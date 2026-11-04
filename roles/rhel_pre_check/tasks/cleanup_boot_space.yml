@@ -1,0 +1,293 @@
+---
+# 仮想化基盤（kasou）かつ対応 OS バージョンの場合のみ、/boot の空き容量確保（kernel-debug 削除）を実行する
+- name: "Cleanup boot space by removing the debug kernel package"
+  when: __rhel_pre_check_boot_space_applicable | bool
+  block:
+    - name: "Include OS version specific removal judgment values"
+      ansible.builtin.include_vars: "{{ lookup('first_found', __rhel_pre_check_boot_space_vars_params) }}"
+      vars:
+        __rhel_pre_check_boot_space_vars_params:
+          files:
+            - "{{ ansible_facts['distribution'] }}_{{ ansible_facts['distribution_major_version'] }}.yml"
+            - "{{ ansible_facts['os_family'] }}_{{ ansible_facts['distribution_major_version'] }}.yml"
+          paths:
+            - "{{ role_path }}/vars"
+ 
+    - name: "Assert the system is booted with the normal kernel"
+      ansible.builtin.assert:
+        that:
+          - "'debug' not in ansible_facts['kernel']"
+        fail_msg: >-
+          デバッグカーネルで起動しています（起動中カーネル: {{ ansible_facts['kernel'] }}）。
+          kernel-debug パッケージを削除するため、デバッグカーネルで起動したままでは実行できません。
+          通常カーネルで起動し直してから再実行してください。
+ 
+    # rpm のバージョン比較順序を Jinja2 で再現できないため、ビルド時刻（エポック秒）を
+    # 先頭に付けて文字列ソートで最新世代を特定する。package_facts モジュールは
+    # ビルド時刻と NVRA 形式の文字列を返さないため command を使用する
+    - name: "Query installed kernel packages with their build time"
+      ansible.builtin.command:
+        argv:
+          - rpm
+          - --query
+          - --queryformat
+          - '%{BUILDTIME} %{VERSION}-%{RELEASE}.%{ARCH}\n'
+          - kernel
+      register: __rhel_pre_check_boot_space_kernel_query
+      changed_when: false
+ 
+    - name: "Determine the kernel generation whose debug package is removed"
+      ansible.builtin.set_fact:
+        __rhel_pre_check_boot_space_target_kernel: >-
+          {{ rhel_pre_check_boot_space_target_kernel_version
+             | default(__rhel_pre_check_boot_space_kernel_query['stdout_lines']
+                       | sort | last | regex_replace('^[0-9]+ ', ''), true) }}
+ 
+    - name: "Determine the debug kernel package to be removed"
+      ansible.builtin.set_fact:
+        __rhel_pre_check_boot_space_target_package: >-
+          {{ rhel_pre_check_boot_space_target_package_name }}-{{ __rhel_pre_check_boot_space_target_kernel }}
+ 
+    # 単一パッケージのインストール有無を確認する専用モジュールがないため command を使用する。
+    # 未インストールを示す終了コード 1 は異常ではないため failed_when で除外する
+    - name: "Check whether the target debug kernel package is installed"
+      ansible.builtin.command:
+        argv:
+          - rpm
+          - --query
+          - "{{ __rhel_pre_check_boot_space_target_package }}"
+      register: __rhel_pre_check_boot_space_target_query
+      changed_when: false
+      failed_when: __rhel_pre_check_boot_space_target_query['rc'] not in [0, 1]
+ 
+    - name: "Display skip message when the target debug kernel package is already absent"
+      ansible.builtin.debug:
+        msg: >-
+          {{ __rhel_pre_check_boot_space_target_package }} はインストールされていないため
+          削除処理をスキップします。
+          {{ rhel_pre_check_boot_space_mount_point }} の空き容量が不足している場合は、
+          df -h {{ rhel_pre_check_boot_space_mount_point }} と rpm -qa | grep kernel の結果を
+          確認し、削除対象の世代を rhel_pre_check_boot_space_target_kernel_version で
+          明示してください。
+      when: __rhel_pre_check_boot_space_target_query['rc'] != 0
+ 
+    - name: "Remove the pre-patch generation debug kernel package"
+      when: __rhel_pre_check_boot_space_target_query['rc'] == 0
+      block:
+        - name: "Gather mount facts before the removal"
+          ansible.builtin.setup:
+            gather_subset:
+              - "!all"
+              - hardware
+ 
+        - name: "Assert the boot filesystem is mounted"
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_facts['mounts']
+                | selectattr('mount', 'equalto', rhel_pre_check_boot_space_mount_point)
+                | list | length > 0
+            fail_msg: >-
+              {{ rhel_pre_check_boot_space_mount_point }} が独立したファイルシステムとして
+              マウントされていないため空き容量を確認できません。
+              /boot を独立させていない構成の場合は、rhel_pre_check_boot_space_mount_point に
+              実際の確認対象マウントポイント（例: "/"）を指定して再実行してください。
+ 
+        - name: "Record the free space of the boot filesystem before the removal"
+          ansible.builtin.set_fact:
+            __rhel_pre_check_boot_space_available_before: >-
+              {{ (ansible_facts['mounts']
+                  | selectattr('mount', 'equalto', rhel_pre_check_boot_space_mount_point)
+                  | first)['size_available'] }}
+ 
+        # rpm -qa 相当の NVRA 形式一覧を返すモジュールがないため command を使用する
+        - name: "Collect the installed package list before the removal"
+          ansible.builtin.command:
+            argv:
+              - rpm
+              - --query
+              - --all
+          register: __rhel_pre_check_boot_space_rpm_qa_before
+          changed_when: false
+ 
+        - name: "Save the installed package list before the removal to evidence file"
+          ansible.builtin.copy:
+            content: "{{ __rhel_pre_check_boot_space_rpm_qa_before['stdout_lines'] | sort | join('\n') }}\n"
+            dest: "{{ patch_evidence_dir }}/boot_space_rpm_qa_before"
+            mode: "0644"
+ 
+        # 依存関係で他のパッケージが削除されないことを事前確認する専用モジュールがないため
+        # command を使用する。--assumeno は依存解決のみ行いパッケージを変更せず終了する。
+        # 「ユーザー操作による中断」を示す終了コード 1 は異常ではないため failed_when で除外する
+        - name: "Resolve the removal transaction without applying it"
+          environment:
+            LC_ALL: C
+          ansible.builtin.command:
+            argv:
+              - yum
+              - remove
+              - "{{ __rhel_pre_check_boot_space_target_package }}"
+              - --assumeno
+          register: __rhel_pre_check_boot_space_dry_run
+          changed_when: false
+          failed_when: __rhel_pre_check_boot_space_dry_run['rc'] not in [0, 1]
+ 
+        - name: "Save the dependency resolution result of the removal to evidence file"
+          ansible.builtin.copy:
+            content: "{{ __rhel_pre_check_boot_space_dry_run['stdout'] }}\n"
+            dest: "{{ patch_evidence_dir }}/boot_space_remove_dry_run"
+            mode: "0644"
+ 
+        - name: "Assert no other packages are removed together with the debug kernel"
+          ansible.builtin.assert:
+            that:
+              - __rhel_pre_check_boot_space_dry_run_completed_message in __rhel_pre_check_boot_space_dry_run['stdout']
+              - >-
+                (__rhel_pre_check_boot_space_dry_run['stdout']
+                | regex_search(__rhel_pre_check_boot_space_removal_count_regex, '\\1') | int) == 1
+              - __rhel_pre_check_boot_space_dependency_section_marker not in __rhel_pre_check_boot_space_dry_run['stdout']
+              - __rhel_pre_check_boot_space_dependent_package_marker not in __rhel_pre_check_boot_space_dry_run['stdout']
+            fail_msg: >-
+              {{ __rhel_pre_check_boot_space_target_package }} の削除で
+              {{ __rhel_pre_check_boot_space_target_package }} 以外のパッケージも削除されるか、
+              依存解決が完了しませんでした。
+              {{ patch_evidence_dir }}/boot_space_remove_dry_run の
+              Removing / Removing for dependencies セクションを確認してください。
+              削除してはならないパッケージが含まれる場合は、手順書に従って手動で
+              空き容量を確保してからパッチ適用に進んでください。
+ 
+        # rpm パッケージのファイル一覧を取得する専用モジュールがないため command を使用する
+        - name: "List the files provided by the target debug kernel package"
+          ansible.builtin.command:
+            argv:
+              - rpm
+              - --query
+              - --list
+              - "{{ __rhel_pre_check_boot_space_target_package }}"
+          register: __rhel_pre_check_boot_space_package_files
+          changed_when: false
+ 
+        - name: "Record the boot filesystem files to be removed"
+          ansible.builtin.set_fact:
+            __rhel_pre_check_boot_space_boot_files: >-
+              {{ __rhel_pre_check_boot_space_package_files['stdout_lines']
+                 | select('match', '/boot/') | list }}
+ 
+        - name: "Assert the target debug kernel package provides files under /boot"
+          ansible.builtin.assert:
+            that:
+              - __rhel_pre_check_boot_space_boot_files | length > 0
+            fail_msg: >-
+              {{ __rhel_pre_check_boot_space_target_package }} は /boot 配下に
+              ファイルを持たないため、削除しても空き容量は確保できません。
+              rhel_pre_check_boot_space_target_package_name の指定値
+              （{{ rhel_pre_check_boot_space_target_package_name }}）が
+              削除対象のパッケージ名として正しいか確認してください。
+ 
+        - name: "Remove the target debug kernel package"
+          ansible.builtin.yum:
+            name: "{{ __rhel_pre_check_boot_space_target_package }}"
+            state: absent
+            autoremove: false
+ 
+        - name: "Gather mount facts after the removal"
+          ansible.builtin.setup:
+            gather_subset:
+              - "!all"
+              - hardware
+ 
+        - name: "Assert the free space of the boot filesystem increased"
+          ansible.builtin.assert:
+            that:
+              - >-
+                (ansible_facts['mounts']
+                | selectattr('mount', 'equalto', rhel_pre_check_boot_space_mount_point)
+                | first)['size_available'] | int
+                > __rhel_pre_check_boot_space_available_before | int
+            fail_msg: >-
+              {{ __rhel_pre_check_boot_space_target_package }} を削除しましたが
+              {{ rhel_pre_check_boot_space_mount_point }} の空き容量が増えていません
+              （削除前: {{ __rhel_pre_check_boot_space_available_before | int }} バイト /
+              削除後: {{ (ansible_facts['mounts']
+                         | selectattr('mount', 'equalto', rhel_pre_check_boot_space_mount_point)
+                         | first)['size_available'] | int }} バイト）。
+              パッチ適用には進まず、df -h {{ rhel_pre_check_boot_space_mount_point }} と
+              {{ patch_evidence_dir }}/boot_space_remove_dry_run を確認してください。
+ 
+        - name: "Check the boot filesystem files of the removed debug kernel package"
+          ansible.builtin.stat:
+            path: "{{ item }}"
+            get_checksum: false
+          register: __rhel_pre_check_boot_space_boot_file_stat
+          loop: "{{ __rhel_pre_check_boot_space_boot_files }}"
+ 
+        - name: "Assert the boot filesystem files of the removed package are gone"
+          ansible.builtin.assert:
+            that:
+              - >-
+                __rhel_pre_check_boot_space_boot_file_stat['results']
+                | map(attribute='stat') | selectattr('exists') | list | length == 0
+            fail_msg: >-
+              {{ __rhel_pre_check_boot_space_target_package }} の削除後も /boot 配下に
+              ファイルが残存しています（残存ファイル:
+              {{ __rhel_pre_check_boot_space_boot_file_stat['results']
+                 | selectattr('stat.exists') | map(attribute='item') | join(', ') }}）。
+              パッチ適用には進まず、ls -l /boot と
+              {{ patch_evidence_dir }}/boot_space_remove_dry_run を確認してください。
+ 
+        # rpm -qa 相当の NVRA 形式一覧を返すモジュールがないため command を使用する
+        - name: "Collect the installed package list after the removal"
+          ansible.builtin.command:
+            argv:
+              - rpm
+              - --query
+              - --all
+          register: __rhel_pre_check_boot_space_rpm_qa_after
+          changed_when: false
+ 
+        - name: "Save the installed package list after the removal to evidence file"
+          ansible.builtin.copy:
+            content: "{{ __rhel_pre_check_boot_space_rpm_qa_after['stdout_lines'] | sort | join('\n') }}\n"
+            dest: "{{ patch_evidence_dir }}/boot_space_rpm_qa_after"
+            mode: "0644"
+ 
+        - name: "Assert only the target debug kernel package was removed"
+          ansible.builtin.assert:
+            that:
+              - >-
+                (__rhel_pre_check_boot_space_rpm_qa_before['stdout_lines']
+                | difference(__rhel_pre_check_boot_space_rpm_qa_after['stdout_lines'])
+                | sort) == [__rhel_pre_check_boot_space_target_package]
+              - >-
+                __rhel_pre_check_boot_space_rpm_qa_after['stdout_lines']
+                | difference(__rhel_pre_check_boot_space_rpm_qa_before['stdout_lines'])
+                | length == 0
+            fail_msg: >-
+              削除前後のパッケージ一覧の差分が
+              {{ __rhel_pre_check_boot_space_target_package }} だけではありません
+              （削除されたパッケージ:
+              {{ __rhel_pre_check_boot_space_rpm_qa_before['stdout_lines']
+                 | difference(__rhel_pre_check_boot_space_rpm_qa_after['stdout_lines'])
+                 | sort | join(', ') }} /
+              追加されたパッケージ:
+              {{ __rhel_pre_check_boot_space_rpm_qa_after['stdout_lines']
+                 | difference(__rhel_pre_check_boot_space_rpm_qa_before['stdout_lines'])
+                 | sort | join(', ') }}）。
+              パッチ適用には進まず、
+              {{ patch_evidence_dir }}/boot_space_rpm_qa_before と
+              boot_space_rpm_qa_after を比較して影響範囲を確認してください。
+ 
+        - name: "Save the free space result of the boot filesystem to evidence file"
+          ansible.builtin.template:
+            src: boot_space_cleanup_result.j2
+            dest: "{{ patch_evidence_dir }}/boot_space_cleanup_result"
+            mode: "0644"
+ 
+- name: "Display skip message when boot space cleanup is not applicable"
+  ansible.builtin.debug:
+    msg: >-
+      /boot 空き容量確保（kernel-debug 削除）は仮想化基盤（kasou）かつ
+      RHEL {{ rhel_pre_check_boot_space_supported_major_versions | join(', ') }} 専用のためスキップします
+      （rhel_system_platform: "{{ rhel_pre_check_boot_space_platform }}" /
+      major_version: {{ ansible_facts['distribution_major_version'] }}）。
+  when: not (__rhel_pre_check_boot_space_applicable | bool)

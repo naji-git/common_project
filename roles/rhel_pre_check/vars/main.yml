@@ -1,8 +1,11 @@
-# パッチ作業ベースディレクトリ
+---
+#パッチ作業ベースディレクトリ
 patch_base_dir: "/home/ansible"
-
-# パッチ格納ディレクトリ（ベースディレクトリ配下として定義）
-patch_storage_dir: "{{ patch_base_dir }}/patch"
-
-#パッチ作業ディレクトリ（ベースディレクトリ配下として定義）
-patch_evidence_dir: "{{ patch_base_dir }}/rhel_patch"
+ 
+#パッチ作業の証跡格納ディレクトリ(ベースディレクトリ配下として定義)
+patch_evidence_dir: "{{patch_base_dir}}/rhel_patch"
+ 
+#/boot 空き容量確保（kernel-debug 削除）を実行するかの判定（kasou かつ対応バージョンの場合のみ true）
+__rhel_pre_check_boot_space_applicable: >-
+  {{ rhel_pre_check_boot_space_platform == 'kasou'
+     and ansible_facts['distribution_major_version'] in rhel_pre_check_boot_space_supported_major_versions }}

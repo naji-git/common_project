@@ -14,3 +14,6 @@
 
 - name: "Include PostgreSQL symlink backup tasks"
   ansible.builtin.include_tasks: check_postgresql_link.yml
+
+- name: "Include boot space cleanup tasks"
+  ansible.builtin.include_tasks: cleanup_boot_space.yml

@@ -1,0 +1,35 @@
+{% set __mount_after = ansible_facts['mounts'] | selectattr('mount', 'equalto', rhel_pre_check_boot_space_mount_point) | first %}
+{% set __available_before = __rhel_pre_check_boot_space_available_before | int %}
+{% set __available_after = __mount_after['size_available'] | int %}
+==================================================================
+{{ rhel_pre_check_boot_space_mount_point }} 空き容量確保結果（debug カーネル削除）
+==================================================================
+対象ホスト      : {{ inventory_hostname }}
+実行日時        : {{ ansible_facts['date_time']['iso8601'] | default('未取得') }}
+起動中カーネル  : {{ ansible_facts['kernel'] }}
+削除パッケージ  : {{ __rhel_pre_check_boot_space_target_package }}
+ 
+------------------------------------------------------------------
+{{ rhel_pre_check_boot_space_mount_point }} 空き容量
+------------------------------------------------------------------
+削除前          : {{ __available_before }} バイト（{{ (__available_before / 1024 / 1024) | round(1) }} MiB）
+削除後          : {{ __available_after }} バイト（{{ (__available_after / 1024 / 1024) | round(1) }} MiB）
+増加分          : {{ __available_after - __available_before }} バイト（{{ ((__available_after - __available_before) / 1024 / 1024) | round(1) }} MiB）
+全体容量        : {{ __mount_after['size_total'] }} バイト（{{ (__mount_after['size_total'] | int / 1024 / 1024) | round(1) }} MiB）
+ 
+------------------------------------------------------------------
+削除された /boot 配下のファイル
+------------------------------------------------------------------
+{% for __boot_file in __rhel_pre_check_boot_space_boot_files %}
+{{ __boot_file }}
+{% endfor %}
+ 
+------------------------------------------------------------------
+削除前後のパッケージ一覧の差分
+------------------------------------------------------------------
+{% for __package in __rhel_pre_check_boot_space_rpm_qa_before['stdout_lines'] | difference(__rhel_pre_check_boot_space_rpm_qa_after['stdout_lines']) | sort %}
+- {{ __package }}
+{% endfor %}
+{% for __package in __rhel_pre_check_boot_space_rpm_qa_after['stdout_lines'] | difference(__rhel_pre_check_boot_space_rpm_qa_before['stdout_lines']) | sort %}
++ {{ __package }}
+{% endfor %}

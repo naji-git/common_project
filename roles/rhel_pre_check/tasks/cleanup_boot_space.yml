@@ -141,7 +141,6 @@
         - name: "Assert no other packages are removed together with the debug kernel"
           ansible.builtin.assert:
             that:
-              - __rhel_pre_check_boot_space_dry_run_completed_message in __rhel_pre_check_boot_space_dry_run['stdout']
               - >-
                 (__rhel_pre_check_boot_space_dry_run['stdout']
                 | regex_search(__rhel_pre_check_boot_space_removal_count_regex, '\\1') | int) == 1

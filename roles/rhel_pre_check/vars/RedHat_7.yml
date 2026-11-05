@@ -2,8 +2,8 @@
 # yum remove --assumeno 完了メッセージ
 __rhel_pre_check_boot_space_dry_run_completed_message: "Exiting on user command"
 
-# 行頭スペースの有無に関わらず Remove [数字] Package にマッチさせる
-__rhel_pre_check_boot_space_removal_count_regex: 'Remove\s+([0-9]+)\s+Package'
+# Remove と Package に挟まれた「数字のみ」に直接マッチさせる正規表現
+__rhel_pre_check_boot_space_removal_count_regex: '(?<=Remove)\s+(\d+)(?=\s+Package)'
 
 # 依存関係マーカー
 __rhel_pre_check_boot_space_dependency_section_marker: "Removing for dependencies:"

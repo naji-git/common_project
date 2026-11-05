@@ -118,3 +118,4 @@
   ansible.builtin.debug:
     msg: "[INFO] 退避ディレクトリは5世代以下のため、ローテーション削除はスキップされました。"
   when: __rhel_post_check_dirs_to_remove | length == 0
+

@@ -180,13 +180,13 @@
     results = []
     if changes:
       results.extend(changes)
-      results.append("→ 対応: 変更がパッチ適用による想定内のものか確認し、想定外の場合は systemctl enable / disable で作業前の状態に戻してください")
+      results.append("→ 対応: ユニットの自動起動設定が変更された原因を確認してください")
     if added:
       results.extend(added)
-      results.append("→ 対応: 追加されたユニットの用途を確認し、不要な場合は systemctl disable で無効化してください")
+      results.append("→ 対応: ユニットが追加された原因を確認してください")
     if removed:
       results.extend(removed)
-      results.append("→ 対応: ユニットが削除された原因 (パッケージ更新など) を確認し、必要な場合は再インストールまたは復旧してください")
+      results.append("→ 対応: ユニットが削除された原因を確認してください")
     if results:
       print("\n".join(results))
     else:
@@ -243,9 +243,9 @@
     if changed_services:
       print("\n".join(changed_services))
       if from_n_changed:
-        print("→ 対応 (事前N): 対象プロセスの稼働状況を確認し、停止している場合は起動してください")
+        print("→ 対応 (事前N): 対象プロセスの稼働状況を確認してください")
       if other_changed:
-        print("→ 対応 (事前N以外): 対象プロセスの稼働状況を確認し、起動している場合はエスカレーションしてください")
+        print("→ 対応 (事前N以外): 対象プロセスの稼働状況を確認してください")
     else:
       print("正常 (事前・事後でプロセスのステータス変更はありません)")
     EOF
@@ -258,3 +258,4 @@
       - "==================== [プロセス状態判定結果] ===================="
       - "{{ __rhel_post_check_process_status_check['stdout_lines'] }}"
       - "================================================================"
+

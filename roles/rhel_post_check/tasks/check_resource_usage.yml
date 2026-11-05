@@ -7,11 +7,11 @@
     path: "{{ patch_evidence_dir }}"
     state: directory
     mode: "0755"
-
+ 
 # ==================================================
 # 事後リソース使用状況の確認
 # ==================================================
-
+ 
 # --------------------------------------------------
 # 1. CPU使用率確認
 # --------------------------------------------------
@@ -20,13 +20,13 @@
   ansible.builtin.command: sar -u
   register: __rhel_post_check_cpu_usage
   changed_when: false
-
+ 
 - name: "Save CPU usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_post_check_cpu_usage['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/cpu_usage_after"
     mode: "0644"
-
+ 
 # --------------------------------------------------
 # 2. メモリ使用率確認
 # --------------------------------------------------
@@ -35,13 +35,13 @@
   ansible.builtin.command: sar -r
   register: __rhel_post_check_mem_usage
   changed_when: false
-
+ 
 - name: "Save memory usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_post_check_mem_usage['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/mem_usage_after"
     mode: "0644"
-
+ 
 # --------------------------------------------------
 # 3. ディスク使用率確認 (/ 使用率)
 # --------------------------------------------------
@@ -50,13 +50,13 @@
   ansible.builtin.command: df -h
   register: __rhel_post_check_disk_usage
   changed_when: false
-
+ 
 - name: "Save disk usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_post_check_disk_usage['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/disk_usage_after"
     mode: "0644"
-
+ 
 # ==================================================
 # 4. パッチ適用作業前後でのリソース比較および増減率の算出・表示
 # ==================================================
@@ -68,7 +68,7 @@
     - mem_usage_before
     - disk_usage_before
   register: __rhel_post_check_usage_before_stats
-
+ 
 - name: "Display warning when pre-check resource usage file does not exist"
   ansible.builtin.debug:
     msg: "[WARNING] {{ item['item'] }} が存在しません ({{ patch_evidence_dir }}/{{ item['item'] }})。{{ item['item'] }} に対応するリソース比較確認をスキップします。事前確認の実施有無を確認してください。"
@@ -76,16 +76,15 @@
   loop_control:
     label: "{{ item['item'] }}"
   when: not (item['stat']['exists'] | bool)
-
+ 
 - name: "Compare resource usage with pre-patch status"
   when: __rhel_post_check_usage_before_stats['results'] | selectattr('stat.exists', 'equalto', true) | list | length > 0
   block:
-
+ 
     # 既存エビデンスファイルの解析・数値パースおよび差分計算をPythonで一括処理するため shell を使用
     - name: "Analyze resource usage comparison with pre-patch status"
       ansible.builtin.shell: |
-        "{{ ansible_facts['python']['executable'] | default('python') }}" - << 'EOF'
-        # -*- coding: utf-8 -*-
+        python3 - << 'EOF'
         import os
         import datetime
         evidence_dir = "{{ patch_evidence_dir }}"
@@ -99,7 +98,7 @@
         cpu_before_file = os.path.join(evidence_dir, "cpu_usage_before")
         cpu_before_time = get_file_mtime_str(cpu_before_file)
         if os.path.exists(cpu_before_file):
-          with open(cpu_before_file, 'r') as f:
+          with open(cpu_before_file, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
               parts = line.strip().split()
               if len(parts) >= 8 and parts[0] != "Linux" and parts[1] != "CPU":
@@ -112,7 +111,7 @@
         mem_before_file = os.path.join(evidence_dir, "mem_usage_before")
         mem_before_time = get_file_mtime_str(mem_before_file)
         if os.path.exists(mem_before_file):
-          with open(mem_before_file, 'r') as f:
+          with open(mem_before_file, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
               parts = line.strip().split()
               if len(parts) >= 5 and parts[0] != "Linux" and "%memused" not in line:
@@ -124,7 +123,7 @@
         disk_before_val = None
         disk_before_file = os.path.join(evidence_dir, "disk_usage_before")
         if os.path.exists(disk_before_file):
-          with open(disk_before_file, 'r') as f:
+          with open(disk_before_file, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
               parts = line.strip().split()
               if len(parts) >= 6 and parts[5] == "/":
@@ -135,7 +134,7 @@
         disk_after_val = None
         disk_after_file = os.path.join(evidence_dir, "disk_usage_after")
         if os.path.exists(disk_after_file):
-          with open(disk_after_file, 'r') as f:
+          with open(disk_after_file, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
               parts = line.strip().split()
               if len(parts) >= 6 and parts[5] == "/":
@@ -147,7 +146,7 @@
         cpu_after_val = None
         cpu_after_file = os.path.join(evidence_dir, "cpu_usage_after")
         if os.path.exists(cpu_after_file):
-          with open(cpu_after_file, 'r') as f:
+          with open(cpu_after_file, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
               parts = line.strip().split()
               if len(parts) >= 8 and parts[0] != "Linux" and parts[1] != "CPU":
@@ -158,7 +157,7 @@
         mem_after_val = None
         mem_after_file = os.path.join(evidence_dir, "mem_usage_after")
         if os.path.exists(mem_after_file):
-          with open(mem_after_file, 'r') as f:
+          with open(mem_after_file, 'r', encoding='utf-8', errors='ignore') as f:
             for line in f:
               parts = line.strip().split()
               if len(parts) >= 5 and parts[0] != "Linux" and "%memused" not in line:
@@ -169,10 +168,10 @@
         now_time = datetime.datetime.now().strftime("%H:%M:%S")
         def format_diff(before, after):
           if before is None or after is None:
-            return "データ取得不可 (パッチ適用前: {0}, パッチ適用後: {1})".format(before, after)
+            return f"データ取得不可 (パッチ適用前: {before}, パッチ適用後: {after})"
           diff = after - before
           sign = "+" if diff > 0 else ""
-          return "パッチ適用前: {0:.1f}% -> パッチ適用後: {1:.1f}% (増減: {2}{3:.1f}%)".format(before, after, sign, diff)
+          return f"パッチ適用前: {before:.1f}% -> パッチ適用後: {after:.1f}% (増減: {sign}{diff:.1f}%)"
         if os.path.exists(cpu_before_file):
           print("=== CPU使用率 ===")
           print(format_diff(cpu_before_val, cpu_after_val))
@@ -185,7 +184,7 @@
         EOF
       register: __rhel_post_check_comparison_result
       changed_when: false
-
+ 
     - name: "Display resource usage comparison"
       ansible.builtin.debug:
         msg: "{{ __rhel_post_check_comparison_result['stdout_lines'] }}"

@@ -237,3 +237,4 @@
   ansible.builtin.debug:
     msg: "PostgreSQL未導入のため処理をスキップします。"
   when: __rhel_post_check_psql['rc'] != 0
+

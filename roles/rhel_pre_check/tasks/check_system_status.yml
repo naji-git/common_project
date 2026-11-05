@@ -4,43 +4,43 @@
   ansible.builtin.command: "/usr/local/sam/kanshi/shell/sk_proc_dsp.sh"
   register: __rhel_pre_check_process_status
   changed_when: false
-
+ 
 - name: "Save process status result to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_process_status['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/process_status_before"
     mode: "0644"
-
+ 
 # 稼働中カーネルのリリースタグを取得するため command を使用
 - name: "Get running kernel release"
   ansible.builtin.command: "uname -r"
   register: __rhel_pre_check_kernel_version
   changed_when: false
-
+ 
 - name: "Save kernel version result to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_kernel_version['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/kernel_version_before"
     mode: "0644"
-
+ 
 # systemd ユニット一覧の取得と正規表現による除外フィルタ処理をパイプで行うため shell を使用
 - name: "Get enabled systemd unit files"
   ansible.builtin.shell: >-
     systemctl list-unit-files | grep -Ev '\.(scope|slice)'
   register: __rhel_pre_check_unit_files
   changed_when: false
-
+ 
 - name: "Save systemd unit files result to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_unit_files['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/unit-files_before"
     mode: "0644"
-
+ 
 - name: "Check if JVM directory exists"
   ansible.builtin.stat:
     path: "/usr/lib/jvm"
   register: __rhel_pre_check_jvm_dir
-
+ 
 - name: "Process and save Java directory information"
   when: __rhel_pre_check_jvm_dir['stat']['exists'] | bool
   block:
@@ -49,7 +49,7 @@
       ansible.builtin.command: "ls -l /usr/lib/jvm"
       register: __rhel_pre_check_java_info
       changed_when: false
-
+ 
     - name: "Save Java directory contents to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_java_info['stdout'] }}\n"

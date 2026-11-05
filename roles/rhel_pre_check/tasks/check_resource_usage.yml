@@ -74,4 +74,3 @@
     content: "{{ __rhel_pre_check_disk_usage['stdout'] }}\n"
     dest: "{{ patch_evidence_dir }}/disk_usage_before"
     mode: "0644"
- 

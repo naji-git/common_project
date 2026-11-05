@@ -8,7 +8,6 @@
 #__rhel_pre_check_boot_space_dependency_section_marker: "Removing for dependencies:"
 #__rhel_pre_check_boot_space_dependent_package_marker: "Removing dependent packages:"
 
----
 # RHEL 7 (yum 3.x)
 # yum remove --assumeno 完了メッセージ
 __rhel_pre_check_boot_space_dry_run_completed_message: "Exiting on user command"

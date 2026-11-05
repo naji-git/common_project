@@ -13,7 +13,7 @@
 __rhel_pre_check_boot_space_dry_run_completed_message: "Exiting on user command"
 
 # Transaction Summary からの数値抽出（改行フラグ (?s) を付与して確実にマッチさせる）
-__rhel_pre_check_boot_space_removal_count_regex: '(?s)Transaction Summary.*?Remove\s+(\d+)\s+Package'
+__rhel_pre_check_boot_space_removal_count_regex: 'Remove\s+([0-9]+)\s+Package'
 
 # 依存関係マーカー
 __rhel_pre_check_boot_space_dependency_section_marker: "Removing for dependencies:"

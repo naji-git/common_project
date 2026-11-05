@@ -9,7 +9,7 @@
 # ============================================================================
  
 # プラットフォーム（kasou の場合のみ kernel-debug 削除を実行。それ以外はスキップ）
-rhel_pre_check_boot_space_platform: "{{ rhel_system_platform | default('') }}"
+rhel_pre_check_boot_space_platform: "kasou"
  
 # 対象パッケージ名（/boot の容量を占有するデバッグ用カーネルパッケージ）
 rhel_pre_check_boot_space_target_package_name: "kernel-debug"
@@ -17,13 +17,13 @@ rhel_pre_check_boot_space_target_package_name: "kernel-debug"
 # 対象カーネルの世代（"VERSION-RELEASE.ARCH" 形式）
 # 既定の空文字では「インストール済みで最もビルドが新しい kernel の世代」
 # （= パッチ適用前の最新世代）を自動判定する
-rhel_pre_check_boot_space_target_kernel_version: ""
+rhel_pre_check_boot_space_target_kernel_version: "3.10.0-1160.119.1.el7.x86_64"
  
 # 空き容量を確認するファイルシステム
-rhel_pre_check_boot_space_mount_point: "/boot"
+rhel_pre_check_boot_space_mount_point: "/"
  
 # kernel-debug 削除に対応する RHEL のメジャーバージョン
 # yum / dnf の出力に依存する判定値は vars/<distribution>_<major_version>.yml で定義する。
 # 新しいバージョンに対応する際は vars 配下にファイルを追加し、このリストに追記する。
 rhel_pre_check_boot_space_supported_major_versions:
-  - "7"
+- "7"

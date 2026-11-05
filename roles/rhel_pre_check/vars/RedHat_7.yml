@@ -4,6 +4,6 @@
 # 判定するための文字列。RHEL 8 以降の dnf は出力形式が異なるため、対応する際は
 # vars/RedHat_8.yml などに dnf の出力に合わせた値を定義する。
 __rhel_pre_check_boot_space_dry_run_completed_message: "Exiting on user command"
-__rhel_pre_check_boot_space_removal_count_regex: "Remove\\s+([0-9]+)\\s+Package"
+__rhel_pre_check_boot_space_removal_count_regex: "Remove\\s+(\\d+)\\s+Package"
 __rhel_pre_check_boot_space_dependency_section_marker: "Removing for dependencies:"
-__rhel_pre_check_boot_space_dependent_package_marker: "Dependent package"
+__rhel_pre_check_boot_space_dependent_package_marker: "Removing dependent packages:"

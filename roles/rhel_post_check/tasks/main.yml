@@ -18,5 +18,8 @@
 - name: "Include post-patch agent status verification tasks"
   ansible.builtin.include_tasks: check_agent_status.yml
 
+- name: "Include splx kernel module replacement tasks"
+  ansible.builtin.include_tasks: replace_splx_kernel_module.yml
+
 - name: "Include Clean up patch directories and rotate archives"
   ansible.builtin.include_tasks: check_health_and_cleanup.yml

@@ -99,12 +99,22 @@
         - (item ~ '.service') in ansible_facts['services']
  
 # --------------------------------------------------
-# 2-2. プレ本・本番環境: 停止したサービスの起動確認
+# 2-2. プレ本・本番環境: 停止したサービスの起動と確認
 # --------------------------------------------------
 - name: "Verify stopped services are running (pre-production and production environments)"
   when: not (is_develop_env | default(false) | bool)
   block:
- 
+
+    - name: "Ensure services listed in rhel_post_check_stop_services are started"
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+      become: true
+      loop: "{{ rhel_post_check_stop_services | default([]) }}"
+
+    - name: "Re-gather service facts"
+      ansible.builtin.service_facts:
+
     - name: "Assert services listed in rhel_post_check_stop_services are running"
       ansible.builtin.assert:
         that:

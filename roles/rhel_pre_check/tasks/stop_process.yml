@@ -1,5 +1,11 @@
 ---
-# Apache、Jboss停止(開発環境)
+# ==================================================
+# 1. httpd/jboss サービスの停止
+# ==================================================
+ 
+# --------------------------------------------------
+# 1-1. 開発環境: httpd/jboss サービスの停止
+# --------------------------------------------------
 - name: Save states of and stop httpd/jboss services (development environment only)
   when: is_develop_env | default(false) | bool
   block:
@@ -65,7 +71,9 @@
       become: true
       loop: "{{ __rhel_pre_check_jboss_running_services | default([]) }}"
  
-# Apache、Jboss停止(プレ本・本番環境)
+# --------------------------------------------------
+# 1-2. プレ本・本番環境: httpd/jboss サービスの停止
+# --------------------------------------------------
 - name: Stop services (pre-production and production environments)
   when: not (is_develop_env | default(false) | bool)
   block:
@@ -75,6 +83,10 @@
         state: stopped
       become: true
       loop: "{{ rhel_pre_check_stop_services | default([]) }}"
+ 
+# ==================================================
+# 2. JP1サービスの停止
+# ==================================================
  
 # JP1（開発・プレ本・本番の全環境で同じ手順）
 # 停止順序は JP1/AJS3 → JP1/Base のため、サービス名リストの並び順をそのまま停止順とする

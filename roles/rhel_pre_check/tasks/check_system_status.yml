@@ -2,16 +2,17 @@
 # 専用モジュールが存在しないカスタム監視シェルの実行のため command を使用
 - name: "Execute custom process monitoring script"
   ansible.builtin.command: "/usr/local/sam/kanshi/shell/sk_proc_dsp.sh"
+  become: true
   register: __rhel_pre_check_process_status
   changed_when: false
  
 - name: "Save process status result to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_process_status['stdout'] }}\n"
-    dest: "{{ patch_evidence_dir }}/process_status_before"
+    dest: "{{ rhel_pre_check_patch_evidence_dir }}/process_status_before"
     mode: "0644"
  
-# 稼働中カーネルのリリースタグを取得するため command を使用
+# 稼働中カーネルのリリースを取得するため command を使用（ファクトはプレイ開始時点の値のため使用しない）
 - name: "Get running kernel release"
   ansible.builtin.command: "uname -r"
   register: __rhel_pre_check_kernel_version
@@ -20,20 +21,21 @@
 - name: "Save kernel version result to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_kernel_version['stdout'] }}\n"
-    dest: "{{ patch_evidence_dir }}/kernel_version_before"
+    dest: "{{ rhel_pre_check_patch_evidence_dir }}/kernel_version_before"
     mode: "0644"
  
-# systemd ユニット一覧の取得と正規表現による除外フィルタ処理をパイプで行うため shell を使用
-- name: "Get enabled systemd unit files"
-  ansible.builtin.shell: >-
-    systemctl list-unit-files | grep -Ev '\.(scope|slice)'
+# systemd ユニットファイル一覧を取得する専用モジュールがないため command を使用
+- name: "Get systemd unit files"
+  ansible.builtin.command: "systemctl list-unit-files"
   register: __rhel_pre_check_unit_files
   changed_when: false
  
 - name: "Save systemd unit files result to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_pre_check_unit_files['stdout'] }}\n"
-    dest: "{{ patch_evidence_dir }}/unit-files_before"
+    content: >-
+      {{ (__rhel_pre_check_unit_files['stdout_lines']
+          | reject('search', '\.(scope|slice)') | join('\n')) ~ '\n' }}
+    dest: "{{ rhel_pre_check_patch_evidence_dir }}/unit-files_before"
     mode: "0644"
  
 - name: "Check if JVM directory exists"
@@ -44,7 +46,8 @@
 - name: "Process and save Java directory information"
   when: __rhel_pre_check_jvm_dir['stat']['exists'] | bool
   block:
-    # ディレクトリ配下の詳細一覧（リンク先を含む）をエビデンス化するため command を使用
+ 
+    # ディレクトリ配下の詳細一覧（リンク先を含む）をエビデンス化する専用モジュールがないため command を使用
     - name: "List Java installation directory contents"
       ansible.builtin.command: "ls -l /usr/lib/jvm"
       register: __rhel_pre_check_java_info
@@ -53,5 +56,6 @@
     - name: "Save Java directory contents to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_java_info['stdout'] }}\n"
-        dest: "{{ patch_evidence_dir }}/java_info_before"
+        dest: "{{ rhel_pre_check_patch_evidence_dir }}/java_info_before"
         mode: "0644"
+

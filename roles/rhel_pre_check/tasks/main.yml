@@ -1,22 +1,22 @@
 ---
-# roles/rhel_pre_check/tasks/main.yml
 - name: "Include pre-patch resource usage check tasks"
   ansible.builtin.include_tasks: check_resource_usage.yml
-
+ 
 - name: "Include pre-patch system status check tasks"
   ansible.builtin.include_tasks: check_system_status.yml
-
+ 
 - name: "Include pre-patch package information collection tasks"
   ansible.builtin.include_tasks: check_package_info.yml
-
+ 
 - name: "Include httpd configuration backup tasks"
   ansible.builtin.include_tasks: backup_httpd_conf.yml
-
+ 
 - name: "Include PostgreSQL symlink backup tasks"
   ansible.builtin.include_tasks: check_postgresql_link.yml
-
-- name: "Include stop process tasks"
+ 
+- name: "Include stop_process tasks"
   ansible.builtin.include_tasks: stop_process.yml
-
+ 
 - name: "Include boot space cleanup tasks"
   ansible.builtin.include_tasks: cleanup_boot_space.yml
+

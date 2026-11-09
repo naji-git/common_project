@@ -1,8 +1,4 @@
 ---
-# ==================================================
-# 0. 対象ホスト判定（ServerProtect for Linux の導入有無）
-# ==================================================
-# 非対象ホストでは権限昇格なしでロール全体をスキップできるよう、このタスクだけ become を付けない
 - name: "Stat /opt/TrendMicro to determine whether this host is a target"
   ansible.builtin.stat:
     path: "/opt/TrendMicro"
@@ -22,11 +18,38 @@
  
 - name: "Replace splx kernel hook module on target hosts"
   when: __rhel_post_check_splx_opttm_stat['stat']['exists'] | bool
+  vars:
+    __rhel_post_check_splx_archive: >-
+      {{ rhel_post_check_splx_archive
+         if rhel_post_check_splx_archive | length > 0
+         else __rhel_post_check_splx_found_archives['files'][0]['path'] | basename }}
+    __rhel_post_check_splx_src_checksum: "{{ __rhel_post_check_splx_src_stat['stat']['checksum'] }}"
+    __rhel_post_check_splx_skip_deploy: >-
+      {{ __rhel_post_check_splx_marker_stat['stat']['exists'] and
+         (__rhel_post_check_splx_marker_slurp['content'] | default('') | b64decode | trim) ==
+         __rhel_post_check_splx_src_checksum }}
+    __rhel_post_check_splx_expected_files: >-
+      {{ rhel_post_check_splx_expected_files
+         if rhel_post_check_splx_expected_files | length > 0
+         else (__rhel_post_check_splx_archive_list['stdout_lines']
+               | map('regex_replace', '^\./', '')
+               | reject('match', '.*/$')
+               | reject('equalto', '')
+               | list) }}
+    __rhel_post_check_splx_old_files: >-
+      {{ rhel_post_check_splx_old_files
+         if rhel_post_check_splx_old_files | length > 0
+         else (__rhel_post_check_splx_existing_files['files']
+               | map(attribute='path') | map('basename') | list
+               | difference([__rhel_post_check_splx_archive])
+               | difference(__rhel_post_check_splx_expected_files
+                             | map('basename') | list)) }}
+    __rhel_post_check_splx_files_to_backup: >-
+      {{ __rhel_post_check_splx_old_src_stats['results']
+         | selectattr('stat.exists')
+         | map(attribute='__rhel_post_check_splx_old_file') | list }}
   block:
  
-    # ==================================================
-    # 1. 事前検証：資材ファイル名の解決（自動検出または明示指定）
-    # ==================================================
     - name: "Find module archive in source directory when not explicitly specified"
       become: true
       ansible.builtin.find:
@@ -51,13 +74,6 @@
              | map(attribute='path') | join(', ') | default('なし') }}
       when: rhel_post_check_splx_archive | length == 0
  
-    - name: "Resolve archive filename to internal variable"
-      ansible.builtin.set_fact:
-        __rhel_post_check_splx_archive: >-
-          {{ rhel_post_check_splx_archive
-             if rhel_post_check_splx_archive | length > 0
-             else __rhel_post_check_splx_found_archives['files'][0]['path'] | basename }}
- 
     - name: "Assert no path traversal in archive filename"
       ansible.builtin.assert:
         that:
@@ -68,9 +84,6 @@
           rhel_post_check_splx_archive の値を確認してください:
           {{ __rhel_post_check_splx_archive }}
  
-    # ==================================================
-    # 2. 事前検証：資材・作業先ディレクトリ・サービススクリプトの確認
-    # ==================================================
     - name: "Stat source archive"
       become: true
       ansible.builtin.stat:
@@ -123,13 +136,6 @@
           /etc/init.d/splx が存在しないか実行権限がありません。
           ServerProtect for Linux が正常にインストールされているか確認してください。
  
-    # ==================================================
-    # 3. 事前検証：完了マーカー照合（適用済みの場合は再展開をスキップ）
-    # ==================================================
-    - name: "Record source archive SHA-256 checksum"
-      ansible.builtin.set_fact:
-        __rhel_post_check_splx_src_checksum: "{{ __rhel_post_check_splx_src_stat['stat']['checksum'] }}"
- 
     - name: "Stat completion marker file"
       become: true
       ansible.builtin.stat:
@@ -144,44 +150,23 @@
       register: __rhel_post_check_splx_marker_slurp
       when: __rhel_post_check_splx_marker_stat['stat']['exists'] | bool
  
-    - name: "Determine whether deployment can be skipped based on completion marker"
-      ansible.builtin.set_fact:
-        __rhel_post_check_splx_skip_deploy: >-
-          {{ __rhel_post_check_splx_marker_stat['stat']['exists'] and
-             (__rhel_post_check_splx_marker_slurp['content'] | default('') | b64decode | trim) ==
-             __rhel_post_check_splx_src_checksum }}
+    # アーカイブの内容一覧を取得する専用モジュールが存在しないため command で tar を実行する。
+    # check_mode でも整合性確認と安全検証を実行するため check_mode: false を指定する
+    - name: "List archive contents to resolve expected files and check path safety"
+      become: true
+      ansible.builtin.command:
+        argv:
+          - "tar"
+          - "--list"
+          - "--gzip"
+          - "--file={{ rhel_post_check_splx_source_dir }}/{{ __rhel_post_check_splx_archive }}"
+      register: __rhel_post_check_splx_archive_list
+      changed_when: false
+      check_mode: false
  
-    # --------------------------------------------------
-    # 3-1. 適用済みの場合：展開済みファイルが欠落していないか確認
-    # --------------------------------------------------
     - name: "Verify expected files still exist when completion marker indicates success"
       when: __rhel_post_check_splx_skip_deploy | bool
       block:
- 
-        # アーカイブの内容一覧を取得する専用モジュールが存在しないため command で tar を実行する。
-        # check_mode でも整合性確認を実行するため check_mode: false を指定する
-        - name: "List archive contents to resolve expected files when skipping deployment"
-          become: true
-          ansible.builtin.command:
-            argv:
-              - "tar"
-              - "--list"
-              - "--gzip"
-              - "--file={{ rhel_post_check_splx_source_dir }}/{{ __rhel_post_check_splx_archive }}"
-          register: __rhel_post_check_splx_archive_list_skip
-          changed_when: false
-          check_mode: false
- 
-        - name: "Resolve expected files list when skipping deployment"
-          ansible.builtin.set_fact:
-            __rhel_post_check_splx_expected_files: >-
-              {{ rhel_post_check_splx_expected_files
-                 if rhel_post_check_splx_expected_files | length > 0
-                 else (__rhel_post_check_splx_archive_list_skip['stdout_lines'] | default([])
-                       | map('regex_replace', '^\./', '')
-                       | reject('match', '.*/$')
-                       | reject('equalto', '')
-                       | list) }}
  
         - name: "Stat expected files to detect marker inconsistency"
           become: true
@@ -210,26 +195,9 @@
               完了マーカー {{ rhel_post_check_splx_marker_path }} を削除して再実行するか、
               欠落ファイルを手動で確認してください。
  
-    # --------------------------------------------------
-    # 3-2. 未適用の場合：アーカイブ安全確認と展開ファイル・旧ファイルの自動検出
-    # --------------------------------------------------
-    - name: "Validate archive safety and resolve expected and old files"
+    - name: "Validate archive safety and resolve old files"
       when: not (__rhel_post_check_splx_skip_deploy | bool)
       block:
- 
-        # アーカイブの内容一覧を取得する専用モジュールが存在しないため command で tar を実行する。
-        # check_mode でも安全検証を実行するため check_mode: false を指定する
-        - name: "List archive contents for path traversal check"
-          become: true
-          ansible.builtin.command:
-            argv:
-              - "tar"
-              - "--list"
-              - "--gzip"
-              - "--file={{ rhel_post_check_splx_source_dir }}/{{ __rhel_post_check_splx_archive }}"
-          register: __rhel_post_check_splx_archive_list
-          changed_when: false
-          check_mode: false
  
         # アーカイブ内のシンボリックリンク情報を取得する専用モジュールが存在しないため command で tar を実行する。
         # check_mode でも安全検証を実行するため check_mode: false を指定する
@@ -283,17 +251,6 @@
               資材が正規のものか確認してください。
               アーカイブ: {{ rhel_post_check_splx_source_dir }}/{{ __rhel_post_check_splx_archive }}
  
-        - name: "Resolve expected files list from archive contents"
-          ansible.builtin.set_fact:
-            __rhel_post_check_splx_expected_files: >-
-              {{ rhel_post_check_splx_expected_files
-                 if rhel_post_check_splx_expected_files | length > 0
-                 else (__rhel_post_check_splx_archive_list['stdout_lines']
-                       | map('regex_replace', '^\./', '')
-                       | reject('match', '.*/$')
-                       | reject('equalto', '')
-                       | list) }}
- 
         - name: "Find existing regular files in work directory for old file auto-detection"
           become: true
           ansible.builtin.find:
@@ -302,27 +259,10 @@
             recurse: false
           register: __rhel_post_check_splx_existing_files
  
-        - name: "Resolve old files list from work directory contents"
-          ansible.builtin.set_fact:
-            __rhel_post_check_splx_old_files: >-
-              {{ rhel_post_check_splx_old_files
-                 if rhel_post_check_splx_old_files | length > 0
-                 else (__rhel_post_check_splx_existing_files['files']
-                       | map(attribute='path') | map('basename') | list
-                       | difference([__rhel_post_check_splx_archive])
-                       | difference(__rhel_post_check_splx_expected_files
-                                     | map('basename') | list)) }}
- 
-    # ==================================================
-    # 4. 資材コピー・展開・旧ファイル退避・サービス再起動（適用済みの場合はスキップ）
-    # ==================================================
     - name: "Deploy new module, back up old files and restart splx service"
       when: not (__rhel_post_check_splx_skip_deploy | bool)
       block:
  
-        # --------------------------------------------------
-        # 4-1. 資材アーカイブを作業先ディレクトリへコピー
-        # --------------------------------------------------
         - name: "Stat archive at work directory destination"
           become: true
           ansible.builtin.stat:
@@ -344,8 +284,6 @@
               コピー先 SHA-256: {{ __rhel_post_check_splx_dest_stat['stat']['checksum'] | default('取得不可') }}
               コピー先のファイルを確認し、不要であれば手動で削除してから再実行してください。
  
-        # remote_src: true でサーバー上の source_dir から同サーバー上の作業先へコピーする。
-        # mode: preserve で元ファイルのパーミッションを引き継ぐ（owner/group は root:root になる）
         - name: "Copy module archive to work directory"
           become: true
           ansible.builtin.copy:
@@ -355,10 +293,6 @@
             mode: preserve
           when: not (__rhel_post_check_splx_dest_stat['stat']['exists'] | bool)
  
-        # --------------------------------------------------
-        # 4-2. アーカイブを作業先ディレクトリで展開
-        # --------------------------------------------------
-        # check_mode ではコピーが実行されず src が存在しないため、展開と展開後確認は check_mode では実施しない
         - name: "Extract module archive in work directory"
           become: true
           ansible.builtin.unarchive:
@@ -396,9 +330,6 @@
               確認してください。
           when: not ansible_check_mode
  
-        # --------------------------------------------------
-        # 4-3. 旧モジュールファイルの退避
-        # --------------------------------------------------
         - name: "Stat backup directory path"
           become: true
           ansible.builtin.stat:
@@ -497,13 +428,6 @@
               退避不要であれば rhel_post_check_splx_old_files にファイル名を明示して
               この自動検出ファイルを除外するか、ファイルの修正後に再実行してください。
  
-        - name: "Build list of old files that require backup"
-          ansible.builtin.set_fact:
-            __rhel_post_check_splx_files_to_backup: >-
-              {{ __rhel_post_check_splx_old_src_stats['results']
-                 | selectattr('stat.exists')
-                 | map(attribute='__rhel_post_check_splx_old_file') | list }}
- 
         # mv は同一ファイルシステム内では atomic でありコピー＋削除より安全。
         # copy + file では atomic な移動を保証できないため command を使用する
         - name: "Move old kernel module files to backup directory"
@@ -518,9 +442,6 @@
             loop_var: __rhel_post_check_splx_old_file
           changed_when: true
  
-        # --------------------------------------------------
-        # 4-4. splx サービスの再起動（新カーネルモジュールのロード）
-        # --------------------------------------------------
         # /etc/init.d/splx は SysV init スクリプトであり ansible.builtin.service では操作できないため command を使用する
         - name: "Restart splx service to load the new kernel module"
           become: true
@@ -528,9 +449,6 @@
             cmd: "/etc/init.d/splx restart"
           changed_when: true
  
-    # ==================================================
-    # 5. splx サービス稼働確認と完了マーカー記録（常に実施）
-    # ==================================================
     - name: "Check splx service running state with retry"
       block:
  
@@ -586,7 +504,7 @@
       ansible.builtin.copy:
         content: "{{ __rhel_post_check_splx_src_checksum }}"
         dest: "{{ rhel_post_check_splx_marker_path }}"
-        owner: root
-        group: root
+        owner: "root"
+        group: "root"
         mode: "0644"
 

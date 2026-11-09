@@ -1,138 +1,115 @@
 ---
-# ==================================================
-# 1. httpd/jboss サービスの停止
-# ==================================================
- 
-# --------------------------------------------------
-# 1-1. 開発環境: httpd/jboss サービスの停止
-# --------------------------------------------------
-- name: Save states of and stop httpd/jboss services (development environment only)
+- name: "Save states of and stop httpd/jboss services (development environment only)"
   when: is_develop_env | default(false) | bool
+  vars:
+    __rhel_pre_check_running_unit_names: >-
+      {{ ansible_facts['services'] | dict2items
+         | selectattr('value.state', 'equalto', 'running')
+         | map(attribute='key') | list }}
+    __rhel_pre_check_httpd_running_services: >-
+      {{ rhel_pre_check_httpd_services | default([])
+         | map('regex_replace', '$', '.service')
+         | select('in', __rhel_pre_check_running_unit_names)
+         | map('regex_replace', '\.service$', '') | list }}
+    __rhel_pre_check_jboss_running_services: >-
+      {{ rhel_pre_check_jboss_services | default([])
+         | map('regex_replace', '$', '.service')
+         | select('in', __rhel_pre_check_running_unit_names)
+         | map('regex_replace', '\.service$', '') | list }}
   block:
-    - name: Gather service facts
+ 
+    - name: "Gather service facts"
       ansible.builtin.service_facts:
  
-    - name: Initialize list of running httpd services
-      ansible.builtin.set_fact:
-        __rhel_pre_check_httpd_running_services: []
- 
-    - name: Add running httpd services to list
-      ansible.builtin.set_fact:
-        __rhel_pre_check_httpd_running_services: "{{ __rhel_pre_check_httpd_running_services + [item] }}"
-      loop: "{{ rhel_pre_check_httpd_services | default([]) }}"
-      when:
-        - ansible_facts['services'][item ~ '.service'] is defined
-        - ansible_facts['services'][item ~ '.service']['state'] == 'running'
- 
-    - name: Create directory for service state files
+    - name: "Create directory for service state files"
       ansible.builtin.file:
-        path: "{{ patch_evidence_dir }}"
+        path: "{{ rhel_pre_check_patch_evidence_dir }}"
         state: directory
         mode: "0755"
       become: true
  
-    - name: Save list of running httpd services
+    - name: "Save list of running httpd services"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_httpd_running_services | to_nice_json }}"
-        dest: "{{ patch_evidence_dir }}/httpd_running_services_pre_check.json"
+        dest: "{{ rhel_pre_check_patch_evidence_dir }}/httpd_running_services_pre_check.json"
         mode: "0644"
       become: true
  
-    - name: Stop running httpd services
+    - name: "Stop running httpd services"
       ansible.builtin.systemd:
         name: "{{ item }}"
         state: stopped
       become: true
-      loop: "{{ __rhel_pre_check_httpd_running_services | default([]) }}"
+      loop: "{{ __rhel_pre_check_httpd_running_services }}"
  
-    - name: Initialize list of running jboss services
-      ansible.builtin.set_fact:
-        __rhel_pre_check_jboss_running_services: []
- 
-    - name: Add running jboss services to list
-      ansible.builtin.set_fact:
-        __rhel_pre_check_jboss_running_services: "{{ __rhel_pre_check_jboss_running_services + [item] }}"
-      loop: "{{ rhel_pre_check_jboss_services | default([]) }}"
-      when:
-        - ansible_facts['services'][item ~ '.service'] is defined
-        - ansible_facts['services'][item ~ '.service']['state'] == 'running'
- 
-    - name: Save list of running jboss services
+    - name: "Save list of running jboss services"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_jboss_running_services | to_nice_json }}"
-        dest: "{{ patch_evidence_dir }}/jboss_running_services_pre_check.json"
+        dest: "{{ rhel_pre_check_patch_evidence_dir }}/jboss_running_services_pre_check.json"
         mode: "0644"
       become: true
  
-    - name: Stop running jboss services
+    - name: "Stop running jboss services"
       ansible.builtin.systemd:
         name: "{{ item }}"
         state: stopped
       become: true
-      loop: "{{ __rhel_pre_check_jboss_running_services | default([]) }}"
+      loop: "{{ __rhel_pre_check_jboss_running_services }}"
  
-# --------------------------------------------------
-# 1-2. プレ本・本番環境: httpd/jboss サービスの停止
-# --------------------------------------------------
-- name: Stop services (pre-production and production environments)
+- name: "Stop services (pre-production and production environments)"
   when: not (is_develop_env | default(false) | bool)
   block:
-    - name: Stop services listed in rhel_pre_check_stop_services
+ 
+    - name: "Stop services listed in rhel_pre_check_stop_services"
       ansible.builtin.systemd:
         name: "{{ item }}"
         state: stopped
       become: true
       loop: "{{ rhel_pre_check_stop_services | default([]) }}"
  
-# ==================================================
-# 2. JP1サービスの停止
-# ==================================================
- 
-# JP1（開発・プレ本・本番の全環境で同じ手順）
-# 停止順序は JP1/AJS3 → JP1/Base のため、サービス名リストの並び順をそのまま停止順とする
-# 存在しないサービスは対象から除外され、以降の記録・停止・確認の対象にならない
-- name: Save list of and stop running JP1 services (all environments)
+- name: "Save list of and stop running JP1 services (all environments)"
   vars:
     __rhel_pre_check_jp1_unit_names: >-
       {{ (rhel_pre_check_jp1_services | default(['jp1_ajs3', 'jp1_base']))
-        | map('regex_replace', '$', '.service') | list }}
+         | map('regex_replace', '$', '.service') | list }}
     __rhel_pre_check_jp1_running_services: >-
       {{ __rhel_pre_check_jp1_unit_names
-        | select('in', ansible_facts['services'])
-        | map('extract', ansible_facts['services'])
-        | selectattr('state', 'equalto', 'running')
-        | map(attribute='name')
-        | map('regex_replace', '\.service$', '')
-        | list }}
+         | select('in', ansible_facts['services'])
+         | map('extract', ansible_facts['services'])
+         | selectattr('state', 'equalto', 'running')
+         | map(attribute='name')
+         | map('regex_replace', '\.service$', '')
+         | list }}
   block:
-    - name: Gather service facts to detect running JP1 services
+ 
+    - name: "Gather service facts to detect running JP1 services"
       ansible.builtin.service_facts:
  
-    - name: Create directory for service state files
+    - name: "Create directory for JP1 service state file"
       ansible.builtin.file:
-        path: "{{ patch_evidence_dir }}"
+        path: "{{ rhel_pre_check_patch_evidence_dir }}"
         state: directory
         mode: "0755"
       become: true
  
-    - name: Save list of running JP1 services
+    - name: "Save list of running JP1 services"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_jp1_running_services | to_nice_json }}"
-        dest: "{{ patch_evidence_dir }}/jp1_running_services_pre_check.json"
+        dest: "{{ rhel_pre_check_patch_evidence_dir }}/jp1_running_services_pre_check.json"
         mode: "0644"
       become: true
  
-    - name: Stop running JP1 services in the order of JP1/AJS3 and JP1/Base
+    - name: "Stop running JP1 services in the order of JP1/AJS3 and JP1/Base"
       ansible.builtin.systemd:
         name: "{{ item }}"
         state: stopped
       become: true
       loop: "{{ __rhel_pre_check_jp1_running_services }}"
  
-    - name: Gather service facts again to verify JP1 services are stopped
+    - name: "Gather service facts again to verify JP1 services are stopped"
       ansible.builtin.service_facts:
  
-    - name: Assert no JP1 service is running after the stop request
+    - name: "Assert no JP1 service is running after the stop request"
       ansible.builtin.assert:
         that:
           - __rhel_pre_check_jp1_running_services | length == 0
@@ -141,3 +118,5 @@
           {{ __rhel_pre_check_jp1_running_services | join(', ') }}.
           Check them with "systemctl status <service>" and "journalctl -u <service>",
           stop them manually, and then rerun the playbook.
+        success_msg: "No JP1 service is running"
+

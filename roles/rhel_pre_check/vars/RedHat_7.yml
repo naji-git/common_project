@@ -1,10 +1,13 @@
 ---
-# yum remove --assumeno 完了メッセージ
+# RHEL 7 (yum 3.x)
+# パッケージマネージャの設定ファイル
+__rhel_pre_check_target_pkg_conf: "/etc/yum.conf"
+ 
+# yum remove --assumeno の出力から「依存関係で他のパッケージが削除されないこと」を
+# 判定するための文字列。RHEL 8 以降の dnf は出力形式が異なるため、対応する際は
+# vars/RedHat_8.yml などに dnf の出力に合わせた値を定義する。
 __rhel_pre_check_boot_space_dry_run_completed_message: "Exiting on user command"
-
-# RHEL 7 (yum) 用の削除件数抽出正規表現
 __rhel_pre_check_boot_space_removal_count_regex: 'Remove\s+(\d+)\s+Package'
-
-# 依存関係マーカー
 __rhel_pre_check_boot_space_dependency_section_marker: "Removing for dependencies:"
 __rhel_pre_check_boot_space_dependent_package_marker: "Removing dependent packages:"
+

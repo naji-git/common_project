@@ -1,15 +1,14 @@
 ---
-# --------------------------------------------------
-# 0. OSメジャーバージョンに応じた対象設定ファイルの決定
-# --------------------------------------------------
-- name: "Determine package manager configuration file path"
-  ansible.builtin.set_fact:
-    __rhel_pre_check_target_pkg_conf: "{{ '/etc/yum.conf' if (ansible_facts['distribution_major_version'] | string == '7') else '/etc/dnf/dnf.conf' }}"
+- name: "Include OS version specific package manager settings"
+  ansible.builtin.include_vars: "{{ lookup('first_found', __rhel_pre_check_pkg_vars_params) }}"
+  vars:
+    __rhel_pre_check_pkg_vars_params:
+      files:
+        - "{{ ansible_facts['distribution'] }}_{{ ansible_facts['distribution_major_version'] }}.yml"
+        - "{{ ansible_facts['os_family'] }}_{{ ansible_facts['distribution_major_version'] }}.yml"
+      paths:
+        - "{{ role_path }}/vars"
  
-# --------------------------------------------------
-# 1. yum.conf / dnf.conf 確認
-# --------------------------------------------------
-# 設定ファイルの内容全体をバイナリ安全に読み込むため slurp モジュールを使用
 - name: "Read package manager configuration file"
   ansible.builtin.slurp:
     src: "{{ __rhel_pre_check_target_pkg_conf }}"
@@ -18,13 +17,9 @@
 - name: "Save package manager configuration to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_pkg_conf_slurp['content'] | b64decode }}"
-    dest: "{{ patch_evidence_dir }}/{{ __rhel_pre_check_target_pkg_conf | basename }}_before"
+    dest: "{{ rhel_pre_check_patch_evidence_dir }}/{{ __rhel_pre_check_target_pkg_conf | basename }}_before"
     mode: "0644"
  
-# --------------------------------------------------
-# 2. yum.conf / dnf.conf 修正
-# ※ コメントアウトされた exclude 行が存在する場合のみ解除
-# --------------------------------------------------
 - name: "Check if commented-out exclude directive exists"
   ansible.builtin.lineinfile:
     path: "{{ __rhel_pre_check_target_pkg_conf }}"
@@ -39,68 +34,84 @@
     - __rhel_pre_check_check_exclude['found'] is defined
     - __rhel_pre_check_check_exclude['found'] > 0
   block:
+ 
     - name: "Update installonly_limit value to 2"
       ansible.builtin.lineinfile:
         path: "{{ __rhel_pre_check_target_pkg_conf }}"
         regexp: '^\s*installonly_limit\s*='
         line: "installonly_limit=2"
         state: present
+      become: true
  
     - name: "Uncomment exclude directive in configuration file"
       ansible.builtin.replace:
         path: "{{ __rhel_pre_check_target_pkg_conf }}"
         regexp: '^\s*[#;]+\s*(exclude\s*=.*kernel.*)'
         replace: '\1'
+      become: true
  
-# --------------------------------------------------
-# 3. パッケージ一覧取得 (rpm -qa | sort -n)
-# --------------------------------------------------
-# RPMパッケージ一覧をバージョン順にソートして一括抽出するためパイプを伴う shell を使用
-- name: "Retrieve sorted list of installed RPM packages"
-  ansible.builtin.shell: >-
-    rpm -qa | sort -n
+# インストール済み RPM パッケージ一覧を取得する専用モジュールがないため command を使用
+- name: "Get installed RPM packages"
+  ansible.builtin.command:
+    argv:
+      - "rpm"
+      - "--query"
+      - "--all"
   register: __rhel_pre_check_rpm_qa_result
   changed_when: false
  
 - name: "Save RPM package list to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_pre_check_rpm_qa_result['stdout'] }}\n"
-    dest: "{{ patch_evidence_dir }}/rpm_qa_before"
+    content: "{{ __rhel_pre_check_rpm_qa_result['stdout_lines'] | sort | join('\n') }}\n"
+    dest: "{{ rhel_pre_check_patch_evidence_dir }}/rpm_qa_before"
     mode: "0644"
  
-# --------------------------------------------------
-# 4. yumリポジトリ参照設定確認・修正
-# --------------------------------------------------
-- name: "Search repo files containing enabled=1"
-  ansible.builtin.shell: >-
-    grep -l '^\s*enabled\s*=\s*1' /etc/yum.repos.d/*.repo || true
+- name: "Find repo files containing enabled=1"
+  ansible.builtin.find:
+    paths: "/etc/yum.repos.d"
+    patterns: "*.repo"
+    contains: '^\s*enabled\s*=\s*1'
   register: __rhel_pre_check_enabled_repos
-  changed_when: false
  
 - name: "Backup and disable repositories when enabled=1 exists"
-  when: __rhel_pre_check_enabled_repos['stdout_lines'] | length > 0
+  when: __rhel_pre_check_enabled_repos['matched'] > 0
+  vars:
+    __rhel_pre_check_enabled_repo_paths: "{{ __rhel_pre_check_enabled_repos['files'] | map(attribute='path') | list }}"
   block:
+ 
     - name: "Backup repo files to evidence directory before modification"
       ansible.builtin.copy:
         src: "{{ item }}"
-        dest: "{{ patch_evidence_dir }}/{{ item | basename }}_before"
+        dest: "{{ rhel_pre_check_patch_evidence_dir }}/{{ item | basename }}_before"
         remote_src: true
         mode: "0644"
-      loop: "{{ __rhel_pre_check_enabled_repos['stdout_lines'] }}"
+      loop: "{{ __rhel_pre_check_enabled_repo_paths }}"
  
     - name: "Disable repositories by changing enabled=1 to enabled=0"
       ansible.builtin.replace:
         path: "{{ item }}"
         regexp: '^(\s*enabled\s*=\s*)1'
         replace: '\g<1>0'
-      loop: "{{ __rhel_pre_check_enabled_repos['stdout_lines'] }}"
+      become: true
+      loop: "{{ __rhel_pre_check_enabled_repo_paths }}"
  
-    - name: "Verify all repositories are disabled"
-      ansible.builtin.command: yum repolist all
+    # リポジトリの有効状態を一覧で取得する専用モジュールがないため command を使用
+    - name: "Get repository list after disabling"
+      ansible.builtin.command: "yum repolist all"
+      become: true
       register: __rhel_pre_check_repolist_result
       changed_when: false
-      # 出力一覧に "enabled" ステータスが1件も残っていないことを判定
-      failed_when: >-
-        __rhel_pre_check_repolist_result['stdout_lines'] |
-        select('match', '^.*(enabled:|\senabled\s).*$') |
-        list | length > 0
+ 
+    - name: "Assert no enabled repository remains"
+      ansible.builtin.assert:
+        that:
+          - >-
+            __rhel_pre_check_repolist_result['stdout_lines']
+            | select('match', '^.*(enabled:|\senabled\s).*$')
+            | list | length == 0
+        fail_msg: >-
+          enabled=0 への変更後も有効なリポジトリが残っています。
+          yum repolist all の結果と /etc/yum.repos.d/*.repo の enabled を確認し、
+          残っているリポジトリを手動で無効化してから再実行してください。
+        success_msg: "All repositories are disabled"
+

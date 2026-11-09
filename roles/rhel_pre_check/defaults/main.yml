@@ -5,11 +5,22 @@
 # rhel_system_platform                 # 'aws' または 'kasou'
  
 # ============================================================================
+# 作業ディレクトリの設定
+# ============================================================================
+ 
+# パッチ作業のベースディレクトリ
+rhel_pre_check_patch_base_dir: "/home/ansible"
+ 
+# パッチ作業の証跡格納ディレクトリ（ベースディレクトリ配下として定義）
+# rhel_post_check が参照する rhel_post_check_patch_evidence_dir と同じパスにすること
+rhel_pre_check_patch_evidence_dir: "{{ rhel_pre_check_patch_base_dir }}/rhel_patch"
+ 
+# ============================================================================
 # /boot 空き容量確保（kernel-debug 削除）の設定
 # ============================================================================
  
 # プラットフォーム（kasou の場合のみ kernel-debug 削除を実行。それ以外はスキップ）
-rhel_pre_check_boot_space_platform: "kasou"
+rhel_pre_check_boot_space_platform: "{{ rhel_system_platform | default('') }}"
  
 # 対象パッケージ名（/boot の容量を占有するデバッグ用カーネルパッケージ）
 rhel_pre_check_boot_space_target_package_name: "kernel-debug"
@@ -17,13 +28,20 @@ rhel_pre_check_boot_space_target_package_name: "kernel-debug"
 # 対象カーネルの世代（"VERSION-RELEASE.ARCH" 形式）
 # 既定の空文字では「インストール済みで最もビルドが新しい kernel の世代」
 # （= パッチ適用前の最新世代）を自動判定する
-rhel_pre_check_boot_space_target_kernel_version: "3.10.0-1160.119.1.el7.x86_64"
+rhel_pre_check_boot_space_target_kernel_version: ""
  
 # 空き容量を確認するファイルシステム
-rhel_pre_check_boot_space_mount_point: "/"
+rhel_pre_check_boot_space_mount_point: "/boot"
  
 # kernel-debug 削除に対応する RHEL のメジャーバージョン
 # yum / dnf の出力に依存する判定値は vars/<distribution>_<major_version>.yml で定義する。
 # 新しいバージョンに対応する際は vars 配下にファイルを追加し、このリストに追記する。
 rhel_pre_check_boot_space_supported_major_versions:
-- "7"
+  - "7"
+ 
+# /boot 空き容量確保（kernel-debug 削除）を実行するかの判定（kasou かつ対応バージョンの場合のみ true）
+# ロール内部の判定用のため、通常は上書きしない
+__rhel_pre_check_boot_space_applicable: >-
+  {{ rhel_pre_check_boot_space_platform == 'kasou'
+     and ansible_facts['distribution_major_version'] in rhel_pre_check_boot_space_supported_major_versions }}
+

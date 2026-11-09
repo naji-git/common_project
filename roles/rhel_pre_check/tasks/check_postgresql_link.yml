@@ -1,45 +1,49 @@
 ---
-# PATH 上の実行コマンド存在有無を即座に確認するため command を使用
+# PATH 上の実行コマンドの有無を確認する専用モジュールがないため command を使用。
+# 未導入を示す終了コード 1 は異常ではないため failed_when で除外する
 - name: "Check if psql command exists"
   ansible.builtin.command: "which psql"
   register: __rhel_pre_check_psql
-  failed_when: false
+  failed_when: __rhel_pre_check_psql['rc'] not in [0, 1]
   changed_when: false
  
 - name: "Verify PostgreSQL related symlinks"
   when: __rhel_pre_check_psql['rc'] == 0
   block:
-    # 複数シンボリックリンクのリンク先一覧を一括取得するため command を使用
+ 
+    # 複数シンボリックリンクのリンク先一覧を一括取得する専用モジュールがないため command を使用。
+    # 一部のリンクが存在しない場合の終了コード 2 は異常ではないため failed_when で除外する
     - name: "List PostgreSQL symlinks under /bin"
       ansible.builtin.command: >-
         ls -l /bin/psql /bin/clusterdb /bin/createdb /bin/createuser
         /bin/dropdb /bin/dropuser /bin/pg_basebackup /bin/pg_dump
         /bin/pg_dumpall /bin/pg_restore /bin/reindexdb /bin/vacuumdb
       register: __rhel_pre_check_pg_link_bin
-      failed_when: false
+      failed_when: __rhel_pre_check_pg_link_bin['rc'] not in [0, 2]
       changed_when: false
  
     - name: "Save PostgreSQL symlinks under /bin to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_pg_link_bin['stdout'] }}\n"
-        dest: "{{ patch_evidence_dir }}/pg_link_bin_before"
+        dest: "{{ rhel_pre_check_patch_evidence_dir }}/pg_link_bin_before"
         mode: "0644"
       when: __rhel_pre_check_pg_link_bin['stdout'] | length > 0
  
-    # 複数シンボリックリンクのリンク先一覧を一括取得するため command を使用
+    # 複数シンボリックリンクのリンク先一覧を一括取得する専用モジュールがないため command を使用。
+    # 一部のリンクが存在しない場合の終了コード 2 は異常ではないため failed_when で除外する
     - name: "List PostgreSQL symlinks under /usr/bin"
       ansible.builtin.command: >-
         ls -l /usr/bin/psql /usr/bin/clusterdb /usr/bin/createdb /usr/bin/createuser
         /usr/bin/dropdb /usr/bin/dropuser /usr/bin/pg_basebackup /usr/bin/pg_dump
         /usr/bin/pg_dumpall /usr/bin/pg_restore /usr/bin/reindexdb /usr/bin/vacuumdb
       register: __rhel_pre_check_pg_link_usr
-      failed_when: false
+      failed_when: __rhel_pre_check_pg_link_usr['rc'] not in [0, 2]
       changed_when: false
  
     - name: "Save PostgreSQL symlinks under /usr/bin to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_pg_link_usr['stdout'] }}\n"
-        dest: "{{ patch_evidence_dir }}/pg_link_usr_before"
+        dest: "{{ rhel_pre_check_patch_evidence_dir }}/pg_link_usr_before"
         mode: "0644"
       when: __rhel_pre_check_pg_link_usr['stdout'] | length > 0
  

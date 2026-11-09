@@ -1,76 +1,67 @@
 ---
-# --------------------------------------------------
-# 0.事前確認エビデンスディレクトリの準備（既存退避 & 新規作成）
-# --------------------------------------------------
 - name: "Check if evidence directory already exists"
   ansible.builtin.stat:
-    path: "{{ patch_evidence_dir }}"
+    path: "{{ rhel_pre_check_patch_evidence_dir }}"
   register: __rhel_pre_check_existing_evidence_dir
  
 - name: "Backup and rename existing evidence directory"
   when: __rhel_pre_check_existing_evidence_dir['stat']['exists'] | bool
   block:
-    # 既存ディレクトリをタイムスタンプ付きでリネーム退避するため command を使用
+ 
+    # 既存ディレクトリをタイムスタンプ付きでリネーム退避する専用モジュールがないため command を使用
     - name: "Rename existing evidence directory with timestamp"
-      ansible.builtin.command: >-
-        mv "{{ patch_evidence_dir }}" "{{ patch_evidence_dir }}_backup_{{ ansible_facts['date_time']['iso8601_basic_short'] }}"
-      register: __rhel_pre_check_backup_result
+      ansible.builtin.command:
+        argv:
+          - "mv"
+          - "{{ rhel_pre_check_patch_evidence_dir }}"
+          - "{{ rhel_pre_check_patch_evidence_dir }}_backup_{{ ansible_facts['date_time']['iso8601_basic_short'] }}"
       changed_when: true
  
     - name: "Display message for renamed evidence directory"
       ansible.builtin.debug:
-        msg: "[NOTICE] 前回の作業ディレクトリが残っていたため、バックアップとしてリネーム退避しました: {{ patch_evidence_dir }}_backup_{{ ansible_facts['date_time']['iso8601_basic_short'] }}"
+        msg: >-
+          [NOTICE] 前回の作業ディレクトリが残っていたため、バックアップとしてリネーム退避しました:
+          {{ rhel_pre_check_patch_evidence_dir }}_backup_{{ ansible_facts['date_time']['iso8601_basic_short'] }}
  
 - name: "Create fresh evidence directory for pre-check"
   ansible.builtin.file:
-    path: "{{ patch_evidence_dir }}"
+    path: "{{ rhel_pre_check_patch_evidence_dir }}"
     state: directory
     mode: "0755"
  
-# ==================================================
-# 事前リソース使用状況の確認
-# ==================================================
-# --------------------------------------------------
-# 1. CPU使用率確認
-# --------------------------------------------------
-# 過去ログを含めた sar 全体出力をエビデンス化するため command を使用
+# 過去ログを含めた sar 全体出力をエビデンス化する専用モジュールがないため command を使用
 - name: "Get sar CPU usage logs before patch"
-  ansible.builtin.command: sar -u
+  ansible.builtin.command: "sar -u"
   register: __rhel_pre_check_cpu_usage
   changed_when: false
  
 - name: "Save CPU usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_cpu_usage['stdout'] }}\n"
-    dest: "{{ patch_evidence_dir }}/cpu_usage_before"
+    dest: "{{ rhel_pre_check_patch_evidence_dir }}/cpu_usage_before"
     mode: "0644"
  
-# --------------------------------------------------
-# 2. メモリ使用率確認
-# --------------------------------------------------
-# 当日の sar メモリログ全体をエビデンス化（CPUの sar -u と粒度を統一）するため command を使用
+# 当日の sar メモリログ全体をエビデンス化する専用モジュールがないため command を使用
 - name: "Get sar memory usage logs before patch"
-  ansible.builtin.command: sar -r
+  ansible.builtin.command: "sar -r"
   register: __rhel_pre_check_mem_usage
   changed_when: false
  
 - name: "Save memory usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_mem_usage['stdout'] }}\n"
-    dest: "{{ patch_evidence_dir }}/mem_usage_before"
+    dest: "{{ rhel_pre_check_patch_evidence_dir }}/mem_usage_before"
     mode: "0644"
  
-# --------------------------------------------------
-# 3. ディスク使用率確認
-# --------------------------------------------------
-# システム全体のディスク構成・使用状況をエビデンス化するため command を使用
+# 事後に同じ形式で比較するため df -h の出力そのものをエビデンス化する。専用モジュールがないため command を使用
 - name: "Get disk usage logs before patch"
-  ansible.builtin.command: df -h
+  ansible.builtin.command: "df -h"
   register: __rhel_pre_check_disk_usage
   changed_when: false
  
 - name: "Save disk usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_disk_usage['stdout'] }}\n"
-    dest: "{{ patch_evidence_dir }}/disk_usage_before"
+    dest: "{{ rhel_pre_check_patch_evidence_dir }}/disk_usage_before"
     mode: "0644"
+

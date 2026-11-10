@@ -143,139 +143,134 @@
 # --------------------------------------------------
 # 3. サービス自動起動設定（unit-files）の差分抽出・表示
 # --------------------------------------------------
- 
-# 複数列のユニット定義リストを突合・構造化解析するためインライン Python スクリプトを実行
 - name: "Analyze unit-files difference between pre and post check"
   ansible.builtin.shell: |
-    "{{ ansible_facts['python']['executable'] | default('python') }}" - << 'EOF'
+    $(command -v python3 || command -v python) - << 'EOF'
     # -*- coding: utf-8 -*-
     import sys
     before_file = "{{ rhel_post_check_patch_evidence_dir }}/unit-files_before"
     after_file = "{{ rhel_post_check_patch_evidence_dir }}/unit-files_after"
- 
+
     def parse_file(filepath):
-     data = {}
-     try:
-      with open(filepath, 'r') as f:
-       for line in f:
-        line_str = line.strip()
-        if not line_str or 'unit files listed' in line_str or line_str.startswith('UNIT FILE'):
-         continue
-        parts = line_str.split()
-        if len(parts) >= 2 and '.' in parts[0]:
-         unit_name = parts[0]
-         status = " ".join(parts[1:])
-         data[unit_name] = status
-     except Exception:
-      pass
-     return data
- 
+        data = {}
+        try:
+            with open(filepath, 'r') as f:
+                for line in f:
+                    line_str = line.strip()
+                    if not line_str or 'unit files listed' in line_str or line_str.startswith('UNIT FILE'):
+                        continue
+                    parts = line_str.split()
+                    if len(parts) >= 2 and '.' in parts[0]:
+                        unit_name = parts[0]
+                        status = " ".join(parts[1:])
+                        data[unit_name] = status
+        except Exception:
+            pass
+        return data
+
     before = parse_file(before_file)
     after = parse_file(after_file)
- 
+
     changes = []
     added = []
     removed = []
- 
+
     for unit, b_stat in before.items():
-     if unit in after:
-      if b_stat != after[unit]:
-       changes.append("【設定変更】 {0}: [作業前] {1} --> [作業後] {2}".format(unit, b_stat, after[unit]))
-     else:
-      removed.append("【削除】 {0} (作業前の状態: {1})".format(unit, b_stat))
- 
+        if unit in after:
+            if b_stat != after[unit]:
+                changes.append("【設定変更】 {0}: [作業前] {1} --> [作業後] {2}".format(unit, b_stat, after[unit]))
+        else:
+            removed.append("【削除】 {0} (作業前の状態: {1})".format(unit, b_stat))
+
     for unit, a_stat in after.items():
-     if unit not in before:
-      added.append("【新規追加】 {0}: [状態] {1}".format(unit, a_stat))
- 
+        if unit not in before:
+            added.append("【新規追加】 {0}: [状態] {1}".format(unit, a_stat))
+
     results = []
     if changes:
-     results.extend(changes)
-     results.append("→ 対応: ユニットの自動起動設定が変更された原因を確認してください")
+        results.extend(changes)
+        results.append("→ 対応: ユニットの自動起動設定が変更された原因を確認してください")
     if added:
-     results.extend(added)
-     results.append("→ 対応: ユニットが追加された原因を確認してください")
+        results.extend(added)
+        results.append("→ 対応: ユニットが追加された原因を確認してください")
     if removed:
-     results.extend(removed)
-     results.append("→ 対応: ユニットが削除された原因を確認してください")
- 
+        results.extend(removed)
+        results.append("→ 対応: ユニットが削除された原因を確認してください")
+
     if results:
-     print("\n".join(results))
+        print("\n".join(results))
     else:
-     print("差分なし")
+        print("差分なし")
     EOF
   register: __rhel_post_check_unit_files_diff
   changed_when: false
- 
+
 - name: "Display unit-files difference result"
   ansible.builtin.debug:
     msg: "{{ __rhel_post_check_unit_files_diff['stdout_lines'] }}"
- 
+
 # --------------------------------------------------
 # 4. プロセス状態（sk_proc_dsp.sh）の比較・表示
 # --------------------------------------------------
- 
-# 独自フォーマットのプロセス状態エビデンスを突合し非N状態を検出するためインライン Python スクリプトを実行
 - name: "Analyze process status difference for abnormal states"
   ansible.builtin.shell: |
-    "{{ ansible_facts['python']['executable'] | default('python') }}" - << 'EOF'
+    $(command -v python3 || command -v python) - << 'EOF'
     # -*- coding: utf-8 -*-
     import sys
     import re
- 
+
     before_file = "{{ rhel_post_check_patch_evidence_dir }}/process_status_before"
     after_file = "{{ rhel_post_check_patch_evidence_dir }}/process_status_after"
- 
+
     def parse_proc_file(filepath):
-     data = {}
-     pattern = re.compile(r'\[([A-Z])\]\s*\[.*?\]\s+(\S+)$')
-     try:
-      with open(filepath, 'r') as f:
-       for line in f:
-        line_str = line.strip()
-        if not line_str or line_str.startswith('='):
-         continue
-        m = pattern.search(line_str)
-        if m:
-         status = m.group(1)
-         service_name = m.group(2)
-         data[service_name] = status
-     except Exception:
-      pass
-     return data
- 
+        data = {}
+        pattern = re.compile(r'\[([A-Z])\]\s*\[.*?\]\s+(\S+)$')
+        try:
+            with open(filepath, 'r') as f:
+                for line in f:
+                    line_str = line.strip()
+                    if not line_str or line_str.startswith('='):
+                        continue
+                    m = pattern.search(line_str)
+                    if m:
+                        status = m.group(1)
+                        service_name = m.group(2)
+                        data[service_name] = status
+        except Exception:
+            pass
+        return data
+
     before = parse_proc_file(before_file)
     after = parse_proc_file(after_file)
- 
+
     changed_services = []
     from_n_changed = False
     other_changed = False
- 
+
     for service, b_stat in before.items():
-     a_stat = after.get(service, '未検出/停止')
-     if a_stat != b_stat:
-      changed_services.append("【ステータス変更検知】 プロセス名: {0} (事前: [{1}] --> 事後: [{2}])".format(service, b_stat, a_stat))
-      if b_stat == 'N':
-       from_n_changed = True
-      else:
-       other_changed = True
- 
+        a_stat = after.get(service, '未検出/停止')
+        if a_stat != b_stat:
+            changed_services.append("【ステータス変更検知】 プロセス名: {0} (事前: [{1}] --> 事後: [{2}])".format(service, b_stat, a_stat))
+            if b_stat == 'N':
+                from_n_changed = True
+            else:
+                other_changed = True
+
     if changed_services:
-     print("\n".join(changed_services))
-     if from_n_changed:
-      print("→ 対応 (事前N): 対象プロセスの稼働状況を確認してください")
-     if other_changed:
-      print("→ 対応 (事前N以外): 対象プロセスの稼働状況を確認してください")
+        print("\n".join(changed_services))
+        if from_n_changed:
+            print("→ 対応 (事前N): 対象プロセスの稼働状況を確認してください")
+        if other_changed:
+            print("→ 対応 (事前N以外): 対象プロセスの稼働状況を確認してください")
     else:
-     print("正常 (事前・事後でプロセスのステータス変更はありません)")
+        print("正常 (事前・事後でプロセスのステータス変更はありません)")
     EOF
   register: __rhel_post_check_process_status_check
   changed_when: false
- 
+
 - name: "Display process status check result"
   ansible.builtin.debug:
     msg:
       - "==================== [プロセス状態判定結果] ===================="
       - "{{ __rhel_post_check_process_status_check['stdout_lines'] }}"
       - "================================================================"
-

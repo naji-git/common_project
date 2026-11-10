@@ -12,7 +12,7 @@
     dest: "{{ rhel_post_check_patch_evidence_dir }}/process_status_after"
     mode: "0644"
  
-# 稼働中カーネルのリリースを取得するため command を使用（ファクトはプレイ開始時点の値のため使用しない）
+# 稼働中カーネルのリリースタグを取得するため command を使用
 - name: "Get running kernel release after patch"
   ansible.builtin.command: "uname -r"
   register: __rhel_post_check_kernel_version
@@ -24,17 +24,16 @@
     dest: "{{ rhel_post_check_patch_evidence_dir }}/kernel_version_after"
     mode: "0644"
  
-# systemd ユニットファイル一覧を取得する専用モジュールがないため command を使用
-- name: "Get systemd unit files after patch"
-  ansible.builtin.command: "systemctl list-unit-files"
+# systemd ユニット一覧の取得と正規表現による除外フィルタ処理をパイプで行うため shell を使用
+- name: "Get enabled systemd unit files after patch"
+  ansible.builtin.shell: >-
+    systemctl list-unit-files | grep -Ev '\.(scope|slice)'
   register: __rhel_post_check_unit_files
   changed_when: false
  
 - name: "Save systemd unit files result to evidence file"
   ansible.builtin.copy:
-    content: >-
-      {{ (__rhel_post_check_unit_files['stdout_lines']
-          | reject('search', '\.(scope|slice)') | join('\n')) ~ '\n' }}
+    content: "{{ __rhel_post_check_unit_files['stdout'] }}\n"
     dest: "{{ rhel_post_check_patch_evidence_dir }}/unit-files_after"
     mode: "0644"
  
@@ -47,7 +46,7 @@
   when: __rhel_post_check_jvm_dir['stat']['exists'] | bool
   block:
  
-    # ディレクトリ配下の詳細一覧（リンク先を含む）をエビデンス化する専用モジュールがないため command を使用
+    # ディレクトリ配下の詳細一覧（リンク先を含む）をエビデンス化するため command を使用
     - name: "List Java installation directory contents after patch"
       ansible.builtin.command: "ls -l /usr/lib/jvm"
       register: __rhel_post_check_java_info
@@ -59,52 +58,68 @@
         dest: "{{ rhel_post_check_patch_evidence_dir }}/java_info_after"
         mode: "0644"
  
+# ==================================================
+# 作業前後での比較処理
+# ==================================================
+ 
+# --------------------------------------------------
+# 1. Java 情報の比較・表示
+# --------------------------------------------------
+ 
 - name: "Check if pre-check Java directory information exists"
   ansible.builtin.stat:
     path: "{{ rhel_post_check_patch_evidence_dir }}/java_info_before"
   register: __rhel_post_check_java_info_before_stat
  
-- name: "Read pre-check Java directory information"
-  ansible.builtin.slurp:
-    src: "{{ rhel_post_check_patch_evidence_dir }}/java_info_before"
-  register: __rhel_post_check_java_info_before_content
+# エビデンスファイルから正規表現で Java バージョン文字列を抽出するためパイプを伴う shell を使用
+- name: "Extract Java version string from pre-check evidence"
+  ansible.builtin.shell: >-
+    grep -E 'java-[0-9].*el[0-9]' "{{ rhel_post_check_patch_evidence_dir }}/java_info_before" |
+    awk '{print $NF}' | head -n 1; exit ${PIPESTATUS[0]}
+  args:
+    executable: /bin/bash
+  register: __rhel_post_check_java_ver_before_cmd
   when: __rhel_post_check_java_info_before_stat['stat']['exists'] | bool
+  changed_when: false
+  failed_when: __rhel_post_check_java_ver_before_cmd['rc'] not in [0, 1]
  
-- name: "Read post-check Java directory information"
-  ansible.builtin.slurp:
-    src: "{{ rhel_post_check_patch_evidence_dir }}/java_info_after"
-  register: __rhel_post_check_java_info_after_content
+# エビデンスファイルから正規表現で Java バージョン文字列を抽出するためパイプを伴う shell を使用
+- name: "Extract Java version string from post-check evidence"
+  ansible.builtin.shell: >-
+    grep -E 'java-[0-9].*el[0-9]' "{{ rhel_post_check_patch_evidence_dir }}/java_info_after" |
+    awk '{print $NF}' | head -n 1; exit ${PIPESTATUS[0]}
+  args:
+    executable: /bin/bash
+  register: __rhel_post_check_java_ver_after_cmd
   when: __rhel_post_check_jvm_dir['stat']['exists'] | bool
+  changed_when: false
+  failed_when: __rhel_post_check_java_ver_after_cmd['rc'] not in [0, 1]
  
+# set_fact による不要なグローバル Fact 汚染を回避するためタスクスコープ変数 (vars:) で定義
 - name: "Display Java version comparison result"
   vars:
-    __rhel_post_check_java_ver_before_missing: "取得失敗またはファイルなし"
-    __rhel_post_check_java_ver_after_missing: "Java未検出 (/usr/lib/jvm の有無と java_info_after の内容を確認してください)"
     __rhel_post_check_java_ver_before: >-
-      {{ ((__rhel_post_check_java_info_before_content['content'] | b64decode).splitlines()
-          | select('search', 'java-[0-9].*el[0-9]') | list | first | default('', true)).split()
-         | last | default(__rhel_post_check_java_ver_before_missing, true)
-         if (__rhel_post_check_java_info_before_stat['stat']['exists'] | bool)
-         else __rhel_post_check_java_ver_before_missing }}
+      {{
+        (__rhel_post_check_java_ver_before_cmd['stdout'] | default('') | trim)
+        if (__rhel_post_check_java_ver_before_cmd['stdout'] | default('') | trim | length > 0)
+        else '取得失敗またはファイルなし'
+      }}
     __rhel_post_check_java_ver_after: >-
-      {{ ((__rhel_post_check_java_info_after_content['content'] | b64decode).splitlines()
-          | select('search', 'java-[0-9].*el[0-9]') | list | first | default('', true)).split()
-         | last | default(__rhel_post_check_java_ver_after_missing, true)
-         if (__rhel_post_check_jvm_dir['stat']['exists'] | bool)
-         else __rhel_post_check_java_ver_after_missing }}
-    __rhel_post_check_java_ver_changed: >-
-      {{ 'java_info_before が存在しないため比較をスキップしました'
-         if not (__rhel_post_check_java_info_before_stat['stat']['exists'] | bool)
-         else ('変更あり'
-               if (__rhel_post_check_java_ver_before != __rhel_post_check_java_ver_after
-                   and __rhel_post_check_java_ver_before != __rhel_post_check_java_ver_before_missing)
-               else '変更なし') }}
+      {{
+        (__rhel_post_check_java_ver_after_cmd['stdout'] | default('') | trim)
+        if (__rhel_post_check_java_ver_after_cmd['stdout'] | default('') | trim | length > 0)
+        else 'Java未検出 (/usr/lib/jvm の有無と java_info_after の内容を確認してください)'
+      }}
   ansible.builtin.debug:
     msg:
       - "=== Java バージョン比較 ==="
       - "作業前: {{ __rhel_post_check_java_ver_before }}"
       - "作業後: {{ __rhel_post_check_java_ver_after }}"
-      - "変更有無: {{ __rhel_post_check_java_ver_changed }}"
+      - "変更有無: {{ 'java_info_before が存在しないため比較をスキップしました' if not (__rhel_post_check_java_info_before_stat['stat']['exists'] | bool) else ('変更あり' if (__rhel_post_check_java_ver_before != __rhel_post_check_java_ver_after and __rhel_post_check_java_ver_before != '取得失敗またはファイルなし') else '変更なし') }}"
+ 
+# --------------------------------------------------
+# 2. カーネルバージョンの比較・表示
+# --------------------------------------------------
  
 - name: "Check if pre-check kernel version evidence exists"
   ansible.builtin.stat:
@@ -118,22 +133,16 @@
   when: __rhel_post_check_kernel_before_stat['stat']['exists'] | bool
  
 - name: "Display kernel version comparison result"
-  vars:
-    __rhel_post_check_kernel_before: >-
-      {{ (__rhel_post_check_kernel_before_b64['content'] | b64decode | trim)
-         if (__rhel_post_check_kernel_before_stat['stat']['exists'] | bool)
-         else '取得失敗またはファイルなし' }}
-    __rhel_post_check_kernel_after: "{{ __rhel_post_check_kernel_version['stdout'] | trim }}"
-    __rhel_post_check_kernel_changed: >-
-      {{ 'kernel_version_before が存在しないため比較をスキップしました'
-         if not (__rhel_post_check_kernel_before_stat['stat']['exists'] | bool)
-         else ('変更あり' if (__rhel_post_check_kernel_before != __rhel_post_check_kernel_after) else '変更なし') }}
   ansible.builtin.debug:
     msg:
       - "=== Kernel Version 比較 ==="
-      - "作業前: {{ __rhel_post_check_kernel_before }}"
-      - "作業後: {{ __rhel_post_check_kernel_after }}"
-      - "変更有無: {{ __rhel_post_check_kernel_changed }}"
+      - "作業前: {{ (__rhel_post_check_kernel_before_b64['content'] | b64decode | trim) if (__rhel_post_check_kernel_before_stat['stat']['exists'] | bool) else '取得失敗またはファイルなし' }}"
+      - "作業後: {{ __rhel_post_check_kernel_version['stdout'] | trim }}"
+      - "変更有無: {{ 'kernel_version_before が存在しないため比較をスキップしました' if not (__rhel_post_check_kernel_before_stat['stat']['exists'] | bool) else ('変更あり' if ((__rhel_post_check_kernel_before_b64['content'] | b64decode | trim) != (__rhel_post_check_kernel_version['stdout'] | trim)) else '変更なし') }}"
+ 
+# --------------------------------------------------
+# 3. サービス自動起動設定（unit-files）の差分抽出・表示
+# --------------------------------------------------
  
 # 複数列のユニット定義リストを突合・構造化解析するためインライン Python スクリプトを実行
 - name: "Analyze unit-files difference between pre and post check"
@@ -201,6 +210,10 @@
 - name: "Display unit-files difference result"
   ansible.builtin.debug:
     msg: "{{ __rhel_post_check_unit_files_diff['stdout_lines'] }}"
+ 
+# --------------------------------------------------
+# 4. プロセス状態（sk_proc_dsp.sh）の比較・表示
+# --------------------------------------------------
  
 # 独自フォーマットのプロセス状態エビデンスを突合し非N状態を検出するためインライン Python スクリプトを実行
 - name: "Analyze process status difference for abnormal states"

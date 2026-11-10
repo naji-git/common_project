@@ -1,20 +1,23 @@
 ---
-# インストール済み RPM パッケージ一覧を取得する専用モジュールがないため command を使用
-- name: "Get installed RPM packages after patch"
-  ansible.builtin.command:
-    argv:
-      - "rpm"
-      - "--query"
-      - "--all"
+# --------------------------------------------------
+# 1. パッケージ一覧取得 (rpm -qa | sort -n)
+# --------------------------------------------------
+# RPMパッケージ一覧をバージョン順にソートして一括抽出するためパイプを伴う shell を使用
+- name: "Retrieve sorted list of installed RPM packages after patch"
+  ansible.builtin.shell: >-
+    rpm -qa | sort -n
   register: __rhel_post_check_rpm_qa_result
   changed_when: false
  
 - name: "Save RPM package list to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_post_check_rpm_qa_result['stdout_lines'] | sort | join('\n') }}\n"
+    content: "{{ __rhel_post_check_rpm_qa_result['stdout'] }}\n"
     dest: "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_after"
     mode: "0644"
  
+# --------------------------------------------------
+# 2. 事前・事後パッケージ差分確認 (変更行のみ抽出)
+# --------------------------------------------------
 - name: "Check if pre-check RPM package list exists"
   ansible.builtin.stat:
     path: "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_before"
@@ -22,27 +25,21 @@
  
 - name: "Compare pre and post patch RPM package lists"
   when: __rhel_post_check_rpm_qa_before_stat['stat']['exists'] | bool
-  vars:
-    __rhel_post_check_rpm_qa_diff_lines: >-
-      {{ __rhel_post_check_rpm_qa_diff['stdout_lines'] | select('match', '^[+-][^+-]') | list }}
   block:
  
-    # 事前・事後の一覧ファイルを unified diff 形式で比較する専用モジュールがないため command を使用。
-    # 差分ありを示す終了コード 1 は異常ではないため failed_when で除外する
-    - name: "Get diff between pre and post patch RPM package lists"
-      ansible.builtin.command:
-        argv:
-          - "diff"
-          - "-u"
-          - "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_before"
-          - "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_after"
+    # 事前事後エビデンスの diff 結果から変更対象行のみをパイプと正規表現で抽出するため shell を使用
+    - name: "Extract changed lines between pre and post patch RPM package lists"
+      ansible.builtin.shell: >-
+        diff -u "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_before" "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_after" | grep -E '^[+-][^+-]'; exit ${PIPESTATUS[0]}
+      args:
+        executable: /bin/bash
       register: __rhel_post_check_rpm_qa_diff
       changed_when: false
       failed_when: __rhel_post_check_rpm_qa_diff['rc'] not in [0, 1]
  
     - name: "Save RPM package diff to evidence file"
       ansible.builtin.copy:
-        content: "{{ __rhel_post_check_rpm_qa_diff_lines | join('\n') }}\n"
+        content: "{{ __rhel_post_check_rpm_qa_diff['stdout'] }}\n"
         dest: "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_diff"
         mode: "0644"
  
@@ -50,16 +47,17 @@
       ansible.builtin.debug:
         msg:
           - "==================== [更新されたパッケージ] ===================="
-          - "{{ '差分なし (パッケージ変更はありません)' if (__rhel_post_check_rpm_qa_diff_lines | length == 0) else __rhel_post_check_rpm_qa_diff_lines }}"
+          - "{{ '差分なし (パッケージ変更はありません)' if (__rhel_post_check_rpm_qa_diff['stdout'] | trim | length == 0) else __rhel_post_check_rpm_qa_diff['stdout_lines'] }}"
           - "================================================================"
  
 - name: "Display skip message when pre-check RPM package list does not exist"
   ansible.builtin.debug:
-    msg: >-
-      [WARNING] rpm_qa_before が存在しません ({{ rhel_post_check_patch_evidence_dir }}/rpm_qa_before)。
-      パッケージ差分の比較をスキップします。事前確認の実施有無を確認してください。
+    msg: "[WARNING] rpm_qa_before が存在しません ({{ rhel_post_check_patch_evidence_dir }}/rpm_qa_before)。パッケージ差分の比較をスキップします。事前確認の実施有無を確認してください。"
   when: not (__rhel_post_check_rpm_qa_before_stat['stat']['exists'] | bool)
  
+# --------------------------------------------------
+# 3. yumリポジトリ参照設定戻し
+# --------------------------------------------------
 - name: "Find backup repo files in evidence directory"
   ansible.builtin.find:
     paths: "{{ rhel_post_check_patch_evidence_dir }}"

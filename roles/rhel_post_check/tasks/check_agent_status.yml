@@ -1,4 +1,7 @@
 ---
+# ==================================================
+# 1. SAM監視ログ確認
+# ==================================================
 - name: "Set today date formatted variable"
   ansible.builtin.set_fact:
     __rhel_post_check_today_compact: "{{ ansible_facts['date_time']['date'] | replace('-', '') }}"
@@ -14,44 +17,45 @@
   when: __rhel_post_check_sam_log_stat['stat']['exists'] | bool
   block:
  
-    - name: "Read SAM filtered log file"
-      ansible.builtin.slurp:
-        src: "/usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_post_check_today_compact }}.log"
+    # フィルタログの内容を標準出力に取得・表示するため command を使用
+    - name: "Cat SAM filtered log file"
+      ansible.builtin.command: "cat /usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_post_check_today_compact }}.log"
       become: true
       register: __rhel_post_check_sam_log_content
+      changed_when: false
  
     - name: "Display SAM log content"
-      vars:
-        __rhel_post_check_sam_log_text: "{{ __rhel_post_check_sam_log_content['content'] | b64decode }}"
       ansible.builtin.debug:
         msg:
           - "=== SAM Filtered Log (/usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_post_check_today_compact }}.log) ==="
-          - >-
-            {{ __rhel_post_check_sam_log_text.splitlines()
-               if (__rhel_post_check_sam_log_text | trim | length > 0)
-               else ['(ログファイルは空です)'] }}
+          - "{{ __rhel_post_check_sam_log_content['stdout_lines'] if (__rhel_post_check_sam_log_content['stdout'] | trim | length > 0) else ['(ログファイルは空です)'] }}"
  
 - name: "Display message if SAM filtered log file does not exist"
   ansible.builtin.debug:
-    msg: >-
-      [WARNING] SAM監視ログファイルが存在しません
-      (/usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_post_check_today_compact }}.log)。
-      ファイルの存在有無を確認してください。
+    msg: "[WARNING] SAM監視ログファイルが存在しません (/usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_post_check_today_compact }}.log)。ファイルの存在有無を確認してください。"
   when: not (__rhel_post_check_sam_log_stat['stat']['exists'] | bool)
  
+# ==================================================
+# 2. httpd/jboss サービス状態の復元・起動確認、ヘルスチェック
+# ==================================================
 - name: "Gather service facts"
   ansible.builtin.service_facts:
  
+# --------------------------------------------------
+# 2-1. 開発環境: rhel_pre_check で保存した起動状態に復元
+# --------------------------------------------------
 - name: "Restore httpd/jboss services to their pre-check states (development environment only)"
   when: is_develop_env | default(false) | bool
   block:
  
+    # 状態保存ファイルは rhel_pre_check 時にサービスが起動していた場合にだけ作成されるため、
+    # ファイルがない場合は異常とせず、そのサービス種別の起動処理をスキップする
     - name: "Check if service state files exist"
       ansible.builtin.stat:
         path: "{{ rhel_post_check_patch_evidence_dir }}/{{ item }}_running_services_pre_check.json"
       loop:
-        - "httpd"
-        - "jboss"
+        - httpd
+        - jboss
       register: __rhel_post_check_service_state_files
  
     - name: "Display skip message when service state file does not exist"
@@ -65,9 +69,7 @@
     - name: "Read service state files that exist"
       ansible.builtin.slurp:
         src: "{{ rhel_post_check_patch_evidence_dir }}/{{ item }}_running_services_pre_check.json"
-      loop: >-
-        {{ __rhel_post_check_service_state_files['results']
-           | selectattr('stat.exists') | map(attribute='item') | list }}
+      loop: "{{ __rhel_post_check_service_state_files['results'] | selectattr('stat.exists') | map(attribute='item') | list }}"
       register: __rhel_post_check_service_state_contents
  
     - name: "Restore httpd services to their pre-check states"
@@ -98,10 +100,13 @@
         - "'jboss' in (__rhel_post_check_service_state_contents['results'] | map(attribute='item') | list)"
         - (item ~ '.service') in ansible_facts['services']
  
+# --------------------------------------------------
+# 2-2. プレ本・本番環境: 停止したサービスの起動確認
+# --------------------------------------------------
 - name: "Verify stopped services are running (pre-production and production environments)"
   when: not (is_develop_env | default(false) | bool)
   block:
- 
+  
     - name: "Ensure services listed in rhel_post_check_stop_services are started"
       ansible.builtin.systemd:
         name: "{{ item }}"
@@ -122,8 +127,15 @@
         success_msg: "The service {{ item }} is running"
       loop: "{{ rhel_post_check_stop_services | default([]) }}"
  
+# --------------------------------------------------
+# 2-3. ヘルスチェック（変数が設定されている場合のみ実行）
+#   rhel_post_check_health_chk_paths : Apache 経由
+#   rhel_post_check_health_chk_jboss : JBoss 経由
+# 実行結果の判定は、総合サマリに OK / NG / 対象外 を表示した後、6. の最後の assert で行う
+# --------------------------------------------------
+ 
 # 社内ヘルスチェックスクリプトを実行する専用モジュールが無いため command を使用する。
-# 結果は標準出力の文言で判定するため failed_when: false とする
+# 結果は標準出力の文言で判定するため failed_when: false とする。
 - name: "Run health check via Apache"
   ansible.builtin.command: "/bin/bash {{ item }} -o -a"
   become: true
@@ -133,7 +145,7 @@
   loop: "{{ rhel_post_check_health_chk_paths | default([], true) }}"
  
 # 社内ヘルスチェックスクリプトを実行する専用モジュールが無いため command を使用する。
-# 結果は標準出力の文言で判定するため failed_when: false とする
+# 結果は標準出力の文言で判定するため failed_when: false とする。
 - name: "Run health check via JBoss"
   ansible.builtin.command: "/bin/bash {{ item['path'] }} -o -j {{ item['script'] }}"
   become: true
@@ -142,6 +154,11 @@
   failed_when: false
   loop: "{{ rhel_post_check_health_chk_jboss | default([], true) }}"
  
+# ==================================================
+# 3. JP1サービスの起動・確認
+#   rhel_pre_check が保存した jp1_running_services_pre_check.json に記録された
+#   （事前確認時に起動していた）サービスだけを起動する
+# ==================================================
 - name: "Check if JP1 service state file exists"
   ansible.builtin.stat:
     path: "{{ rhel_post_check_patch_evidence_dir }}/jp1_running_services_pre_check.json"
@@ -153,6 +170,8 @@
   when: __rhel_post_check_jp1_state_file['stat']['exists'] | bool
   register: __rhel_post_check_jp1_state_content
  
+# JSON は rhel_pre_check の停止順（JP1/AJS3 → JP1/Base）で保存されているため、
+# 逆順にして起動順（JP1/Base → JP1/AJS3）にする。ファイルがない場合は空リストとする
 - name: "Set JP1 services to start in reverse stop order"
   ansible.builtin.set_fact:
     __rhel_post_check_jp1_start_services: >-
@@ -173,6 +192,10 @@
     - __rhel_post_check_jp1_state_file['stat']['exists'] | bool
     - __rhel_post_check_jp1_start_services | length == 0
  
+# --------------------------------------------------
+# 3-1. 事前確認時に起動していた JP1 サービスの起動
+#   JSON の並びを逆順にしているため、jp1_base → jp1_ajs3 の順に起動する
+# --------------------------------------------------
 - name: "Ensure JP1 services running before patching are started"
   ansible.builtin.systemd:
     name: "{{ item }}"
@@ -182,8 +205,10 @@
   register: __rhel_post_check_jp1_start
   ignore_errors: true
  
-# エビデンス・ログ確認用に現在のサービス稼働詳細を取得する専用モジュールがないため command を使用。
-# 起動に失敗したサービスでも終了コードが 0 以外になるが処理は継続するため failed_when: false とする
+# --------------------------------------------------
+# 3-2. 起動対象のサービスのステータス確認・ログ出力
+# --------------------------------------------------
+# エビデンス・ログ確認用に現在のサービス稼働詳細を取得するため command を使用
 - name: "Get JP1 service status for started services"
   ansible.builtin.command: "systemctl status {{ item }}"
   loop: "{{ __rhel_post_check_jp1_start_services }}"
@@ -200,6 +225,9 @@
   loop_control:
     label: "{{ item['item'] }}"
  
+# ==================================================
+# 4. EDR の正常性確認
+# ==================================================
 - name: "Check if falconctl executable exists"
   ansible.builtin.stat:
     path: "/opt/CrowdStrike/falconctl"
@@ -209,8 +237,7 @@
   when: __rhel_post_check_falconctl_stat['stat']['exists'] | bool
   block:
  
-    # 専用モジュールが存在しないベンダー独自CLIの実行のため command を使用。
-    # 結果は標準出力の文言で判定するため failed_when: false とする
+    # 専用モジュールが存在しないベンダー独自CLIの実行のため command を使用
     - name: "Get CrowdStrike Falcon RFM state"
       ansible.builtin.command: "/opt/CrowdStrike/falconctl -g --rfm-state"
       become: true
@@ -221,18 +248,21 @@
     - name: "Display CrowdStrike Falcon RFM check result"
       ansible.builtin.debug:
         msg: >-
-          {{ '[OK] CrowdStrike Falcon の RFM ステータスは正常 (rfm-state=false.) です。'
-             if ('rfm-state=false.' in __rhel_post_check_rfm_result['stdout'])
-             else '[WARNING] CrowdStrike Falcon の RFM ステータス異常を検知しました: '
-                  ~ (__rhel_post_check_rfm_result['stdout'] | trim) ~ '。EDRの状態を確認してください' }}
+          {{
+           '[OK] CrowdStrike Falcon の RFM ステータスは正常 (rfm-state=false.) です。'
+           if ('rfm-state=false.' in __rhel_post_check_rfm_result['stdout'])
+           else '[WARNING] CrowdStrike Falcon の RFM ステータス異常を検知しました: ' ~ (__rhel_post_check_rfm_result['stdout'] | trim) ~ '。EDRの状態を確認してください'
+          }}
  
 - name: "Display skip message when falconctl is not installed"
   ansible.builtin.debug:
     msg: "[INFO] CrowdStrike falconctl is not found. Skipping EDR health check."
   when: not (__rhel_post_check_falconctl_stat['stat']['exists'] | bool)
  
-# ディレクトリ配下の詳細エビデンス（更新時刻・パーミッション）を出力する専用モジュールがないため command を使用。
-# ディレクトリにアクセスできない場合も処理を継続するため failed_when: false とする
+# ==================================================
+# 5. 監視抑止ファイルの存在確認・削除
+# ==================================================
+# ディレクトリ配下の詳細エビデンス（更新時刻・パーミッション）を出力するため command を使用
 - name: "List SAM temporary directory contents initially"
   ansible.builtin.command: "ls -l /usr/local/sam/kanshi/tmp"
   become: true
@@ -247,6 +277,7 @@
 - name: "Find and remove today modified DISABLE files in SAM temporary directory"
   block:
  
+    # 監視抑止ファイルの探索（タイムスタンプ比較のため find モジュールを使用）
     - name: "Find today modified DISABLE files in SAM temporary directory"
       ansible.builtin.find:
         paths: "/usr/local/sam/kanshi/tmp"
@@ -254,6 +285,7 @@
       become: true
       register: __rhel_post_check_disable_files
  
+    # 作業日当日に更新・作成された DISABLE ファイルを削除（冪等性を担保）
     - name: "Remove today modified DISABLE files"
       ansible.builtin.file:
         path: "{{ item['path'] }}"
@@ -274,8 +306,7 @@
           - "エラー内容: {{ ansible_failed_result['msg'] | default('メッセージなし') }}"
           - "/usr/local/sam/kanshi/tmp 配下の DISABLE* ファイルとパーミッションを確認し、必要に応じて手動で削除してください。"
  
-# 削除後状態を確認する専用モジュールがないため command を使用。
-# ディレクトリにアクセスできない場合も処理を継続するため failed_when: false とする
+# 削除後状態の確認のため command を使用
 - name: "List SAM temporary directory contents after cleanup"
   ansible.builtin.command: "ls -l /usr/local/sam/kanshi/tmp"
   become: true
@@ -287,15 +318,14 @@
   ansible.builtin.debug:
     msg: "{{ __rhel_post_check_sam_tmp_final['stdout_lines'] | default(['Directory not accessible']) }}"
  
+# ==================================================
+# 6. ステータス確認の総合サマリ表示
+# ==================================================
 - name: "Display summary and assert health checks succeeded"
   vars:
     __rhel_post_check_health_chk_success_message: "ヘルスチェック処理が正常終了しました"
-    __rhel_post_check_apache_results: >-
-      {{ __rhel_post_check_health_chk_result['results'] | default([])
-         | rejectattr('skipped', 'defined') | list }}
-    __rhel_post_check_jboss_results: >-
-      {{ __rhel_post_check_health_chk_jboss_result['results'] | default([])
-         | rejectattr('skipped', 'defined') | list }}
+    __rhel_post_check_apache_results: "{{ __rhel_post_check_health_chk_result['results'] | default([]) | rejectattr('skipped', 'defined') | list }}"
+    __rhel_post_check_jboss_results: "{{ __rhel_post_check_health_chk_jboss_result['results'] | default([]) | rejectattr('skipped', 'defined') | list }}"
     __rhel_post_check_jp1_failed_services: >-
       {{ __rhel_post_check_jp1_start['results'] | default([])
          | selectattr('failed', 'defined') | selectattr('failed') | map(attribute='item') | list }}
@@ -305,31 +335,6 @@
     __rhel_post_check_jboss_failed: >-
       {{ __rhel_post_check_jboss_results
          | rejectattr('stdout', 'search', __rhel_post_check_health_chk_success_message) | list }}
-    __rhel_post_check_jp1_summary: >-
-      {{ 'SKIPPED (jp1_running_services_pre_check.json なし)'
-         if not (__rhel_post_check_jp1_state_file['stat']['exists'] | bool)
-         else ('SKIPPED (事前確認時の起動サービスなし)'
-               if (__rhel_post_check_jp1_start_services | length == 0)
-               else ('FAILED TO START (' ~ (__rhel_post_check_jp1_failed_services | join(', '))
-                     ~ ') : systemctl status で確認してください'
-                     if (__rhel_post_check_jp1_failed_services | length > 0)
-                     else 'OK (' ~ (__rhel_post_check_jp1_start_services | join(', ')) ~ ')')) }}
-    __rhel_post_check_apache_summary: >-
-      {{ '対象外' if (__rhel_post_check_apache_results | length == 0)
-         else ('NG' if (__rhel_post_check_apache_failed | length > 0) else 'OK') }}
-    __rhel_post_check_jboss_summary: >-
-      {{ '対象外' if (__rhel_post_check_jboss_results | length == 0)
-         else ('NG' if (__rhel_post_check_jboss_failed | length > 0) else 'OK') }}
-    __rhel_post_check_edr_summary: >-
-      {{ 'OK' if ('rfm-state=false.' in (__rhel_post_check_rfm_result['stdout'] | default('')))
-         else ('WARNING (Not false) : EDRの状態を確認してください'
-               if (__rhel_post_check_falconctl_stat['stat']['exists'] | default(false))
-               else 'SKIPPED') }}
-    __rhel_post_check_disable_summary: >-
-      {{ 'PURGED (' ~ (__rhel_post_check_removed_disable_files['results'] | default([])
-                       | selectattr('changed', 'equalto', true) | list | length) ~ ' files)'
-         if (__rhel_post_check_disable_files['files'] | default([]) | length > 0)
-         else 'NONE' }}
   block:
  
     - name: "Display overall agent check summary"
@@ -339,13 +344,20 @@
           - "       AGENT STATUS CHECK SUMMARY      "
           - "=================================================="
           - "SAM Log Check   : msg_filtered_{{ __rhel_post_check_today_compact }}.logの内容を確認"
-          - "JP1 Services    : {{ __rhel_post_check_jp1_summary }}"
-          - "Health Check Apache: {{ __rhel_post_check_apache_summary }}"
-          - "Health Check Jboss : {{ __rhel_post_check_jboss_summary }}"
-          - "EDR  : {{ __rhel_post_check_edr_summary }}"
-          - "DISABLE Files Purge: {{ __rhel_post_check_disable_summary }}"
+          - >-
+            JP1 Services    : {{
+            'SKIPPED (jp1_running_services_pre_check.json なし)' if not (__rhel_post_check_jp1_state_file['stat']['exists'] | bool)
+            else ('SKIPPED (事前確認時の起動サービスなし)' if (__rhel_post_check_jp1_start_services | length == 0)
+            else ('FAILED TO START (' ~ (__rhel_post_check_jp1_failed_services | join(', ')) ~ ') : systemctl status で確認してください'
+            if (__rhel_post_check_jp1_failed_services | length > 0) else 'OK (' ~ (__rhel_post_check_jp1_start_services | join(', ')) ~ ')'))
+            }}
+          - "Health Check Apache: {{ '対象外' if (__rhel_post_check_apache_results | length == 0) else ('NG' if (__rhel_post_check_apache_failed | length > 0) else 'OK') }}"
+          - "Health Check Jboss : {{ '対象外' if (__rhel_post_check_jboss_results | length == 0) else ('NG' if (__rhel_post_check_jboss_failed | length > 0) else 'OK') }}"
+          - "EDR  : {{ 'OK' if ('rfm-state=false.' in (__rhel_post_check_rfm_result['stdout'] | default(''))) else ('WARNING (Not false) : EDRの状態を確認してください' if (__rhel_post_check_falconctl_stat['stat']['exists'] | default(false)) else 'SKIPPED') }}"
+          - "DISABLE Files Purge: {{ 'PURGED (' ~ (__rhel_post_check_removed_disable_files['results'] | default([]) | selectattr('changed', 'equalto', true) | list | length) ~ ' files)' if (__rhel_post_check_disable_files['files'] | default([]) | length > 0) else 'NONE' }}"
           - "=================================================="
  
+    # サマリを表示した後に判定することで、ヘルスチェックが NG でも他の確認結果を先に出力する
     - name: "Assert health checks via Apache and JBoss succeeded"
       ansible.builtin.assert:
         that:

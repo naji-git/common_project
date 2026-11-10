@@ -94,9 +94,11 @@
                     if "%idle" in parts:
                         idle_idx = parts.index("%idle")
                         continue
-                    if idle_idx != -1 and len(parts) > idle_idx and parts[0] != "Average:":
+                    if idle_idx != -1 and len(parts) > idle_idx:
+                        # "Average:" 行または数値データ行から値を取得
+                        val_str = parts[idle_idx]
                         try:
-                            val = 100.0 - float(parts[idle_idx])
+                            val = 100.0 - float(val_str)
                         except ValueError:
                             pass
             return val
@@ -120,9 +122,11 @@
                     if "%memused" in parts:
                         memused_idx = parts.index("%memused")
                         continue
-                    if memused_idx != -1 and len(parts) > memused_idx and parts[0] != "Average:":
+                    if memused_idx != -1 and len(parts) > memused_idx:
+                        # "Average:" 行または数値データ行から値を取得
+                        val_str = parts[memused_idx]
                         try:
-                            val = float(parts[memused_idx])
+                            val = float(val_str)
                         except ValueError:
                             pass
             return val
@@ -140,11 +144,16 @@
             with open(filepath, 'r') as f:
                 for line in f:
                     parts = line.strip().split()
-                    if len(parts) >= 6 and parts[5] == "/":
-                        try:
-                            val = float(parts[4].replace("%", ""))
-                        except ValueError:
-                            pass
+                    # 最終列がマウントポイント / の行を判定
+                    if parts and parts[-1] == "/":
+                        # 使用率は通常後ろから2番目の列 (%付き)
+                        for part in reversed(parts[:-1]):
+                            if part.endswith("%"):
+                                try:
+                                    val = float(part.replace("%", ""))
+                                    break
+                                except ValueError:
+                                    pass
             return val
 
         disk_before_file = os.path.join(evidence_dir, "disk_usage_before")
@@ -156,10 +165,12 @@
 
         def format_diff(before, after):
             if before is None or after is None:
-                return "データ取得不可 (パッチ適用前: {0}, パッチ適用後: {1})".format(before, after)
+                b_str = "{0:.2f}%".format(before) if before is not None else "None"
+                a_str = "{0:.2f}%".format(after) if after is not None else "None"
+                return "データ取得不可 (パッチ適用前: {0}, パッチ適用後: {1})".format(b_str, a_str)
             diff = after - before
             sign = "+" if diff > 0 else ""
-            return "パッチ適用前: {0:.1f}% -> パッチ適用後: {1:.1f}% (増減: {2}{3:.1f}%)".format(before, after, sign, diff)
+            return "パッチ適用前: {0:.2f}% -> パッチ適用後: {1:.2f}% (増減: {2}{3:.2f}%)".format(before, after, sign, diff)
 
         if os.path.exists(cpu_before_file):
             print("=== CPU使用率 ===")

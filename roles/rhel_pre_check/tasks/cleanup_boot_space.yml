@@ -1,16 +1,7 @@
 ---
+# 仮想化基盤（kasou）かつ対応 OS バージョンの場合のみ、/boot の空き容量確保（kernel-debug 削除）を実行する
 - name: "Cleanup boot space by removing the debug kernel package"
   when: __rhel_pre_check_boot_space_applicable | bool
-  vars:
-    __rhel_pre_check_boot_space_target_kernel: >-
-      {{ rhel_pre_check_boot_space_target_kernel_version
-         | default(__rhel_pre_check_boot_space_kernel_query['stdout_lines']
-                   | sort | last | regex_replace('^[0-9]+ ', ''), true) }}
-    __rhel_pre_check_boot_space_target_package: >-
-      {{ rhel_pre_check_boot_space_target_package_name }}-{{ __rhel_pre_check_boot_space_target_kernel }}
-    __rhel_pre_check_boot_space_boot_files: >-
-      {{ __rhel_pre_check_boot_space_package_files['stdout_lines']
-         | select('match', '/boot/') | list }}
   block:
     - name: "Include OS version specific removal judgment values"
       ansible.builtin.include_vars: "{{ lookup('first_found', __rhel_pre_check_boot_space_vars_params) }}"
@@ -37,21 +28,33 @@
     - name: "Query installed kernel packages with their build time"
       ansible.builtin.command:
         argv:
-          - "rpm"
-          - "--query"
-          - "--queryformat"
+          - rpm
+          - --query
+          - --queryformat
           - '%{BUILDTIME} %{VERSION}-%{RELEASE}.%{ARCH}\n'
-          - "kernel"
+          - kernel
       register: __rhel_pre_check_boot_space_kernel_query
       changed_when: false
+ 
+    - name: "Determine the kernel generation whose debug package is removed"
+      ansible.builtin.set_fact:
+        __rhel_pre_check_boot_space_target_kernel: >-
+          {{ rhel_pre_check_boot_space_target_kernel_version
+             | default(__rhel_pre_check_boot_space_kernel_query['stdout_lines']
+                       | sort | last | regex_replace('^[0-9]+ ', ''), true) }}
+ 
+    - name: "Determine the debug kernel package to be removed"
+      ansible.builtin.set_fact:
+        __rhel_pre_check_boot_space_target_package: >-
+          {{ rhel_pre_check_boot_space_target_package_name }}-{{ __rhel_pre_check_boot_space_target_kernel }}
  
     # 単一パッケージのインストール有無を確認する専用モジュールがないため command を使用する。
     # 未インストールを示す終了コード 1 は異常ではないため failed_when で除外する
     - name: "Check whether the target debug kernel package is installed"
       ansible.builtin.command:
         argv:
-          - "rpm"
-          - "--query"
+          - rpm
+          - --query
           - "{{ __rhel_pre_check_boot_space_target_package }}"
       register: __rhel_pre_check_boot_space_target_query
       changed_when: false
@@ -75,7 +78,7 @@
           ansible.builtin.setup:
             gather_subset:
               - "!all"
-              - "hardware"
+              - hardware
  
         - name: "Assert the boot filesystem is mounted"
           ansible.builtin.assert:
@@ -101,9 +104,9 @@
         - name: "Collect the installed package list before the removal"
           ansible.builtin.command:
             argv:
-              - "rpm"
-              - "--query"
-              - "--all"
+              - rpm
+              - --query
+              - --all
           register: __rhel_pre_check_boot_space_rpm_qa_before
           changed_when: false
  
@@ -118,13 +121,13 @@
         # 「ユーザー操作による中断」を示す終了コード 1 は異常ではないため failed_when で除外する
         - name: "Resolve the removal transaction without applying it"
           environment:
-            LC_ALL: "C"
+            LC_ALL: C
           ansible.builtin.command:
             argv:
-              - "yum"
-              - "remove"
+              - yum
+              - remove
               - "{{ __rhel_pre_check_boot_space_target_package }}"
-              - "--assumeno"
+              - --assumeno
           become: true
           register: __rhel_pre_check_boot_space_dry_run
           changed_when: false
@@ -159,12 +162,18 @@
         - name: "List the files provided by the target debug kernel package"
           ansible.builtin.command:
             argv:
-              - "rpm"
-              - "--query"
-              - "--list"
+              - rpm
+              - --query
+              - --list
               - "{{ __rhel_pre_check_boot_space_target_package }}"
           register: __rhel_pre_check_boot_space_package_files
           changed_when: false
+ 
+        - name: "Record the boot filesystem files to be removed"
+          ansible.builtin.set_fact:
+            __rhel_pre_check_boot_space_boot_files: >-
+              {{ __rhel_pre_check_boot_space_package_files['stdout_lines']
+                 | select('match', '/boot/') | list }}
  
         - name: "Assert the target debug kernel package provides files under /boot"
           ansible.builtin.assert:
@@ -182,13 +191,13 @@
             name: "{{ __rhel_pre_check_boot_space_target_package }}"
             state: absent
             autoremove: false
-          become: true
  
+          become: true
         - name: "Gather mount facts after the removal"
           ansible.builtin.setup:
             gather_subset:
               - "!all"
-              - "hardware"
+              - hardware
  
         - name: "Assert the free space of the boot filesystem increased"
           ansible.builtin.assert:
@@ -233,9 +242,9 @@
         - name: "Collect the installed package list after the removal"
           ansible.builtin.command:
             argv:
-              - "rpm"
-              - "--query"
-              - "--all"
+              - rpm
+              - --query
+              - --all
           register: __rhel_pre_check_boot_space_rpm_qa_after
           changed_when: false
  
@@ -273,7 +282,7 @@
  
         - name: "Save the free space result of the boot filesystem to evidence file"
           ansible.builtin.template:
-            src: "boot_space_cleanup_result.j2"
+            src: boot_space_cleanup_result.j2
             dest: "{{ rhel_pre_check_patch_evidence_dir }}/boot_space_cleanup_result"
             mode: "0644"
  
@@ -285,3 +294,4 @@
       （rhel_system_platform: "{{ rhel_pre_check_boot_space_platform }}" /
       major_version: {{ ansible_facts['distribution_major_version'] }}）。
   when: not (__rhel_pre_check_boot_space_applicable | bool)
+

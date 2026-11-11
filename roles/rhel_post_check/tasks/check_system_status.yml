@@ -99,20 +99,20 @@
       {{
         (__rhel_post_check_java_ver_before_cmd['stdout'] | default('') | trim)
         if (__rhel_post_check_java_ver_before_cmd['stdout'] | default('') | trim | length > 0)
-        else '取得失敗またはファイルなし'
+        else 'Java未検出'
       }}
     __rhel_post_check_java_ver_after: >-
       {{
         (__rhel_post_check_java_ver_after_cmd['stdout'] | default('') | trim)
         if (__rhel_post_check_java_ver_after_cmd['stdout'] | default('') | trim | length > 0)
-        else 'Java未検出 (/usr/lib/jvm の有無と java_info_after の内容を確認してください)'
+        else 'Java未検出'
       }}
   ansible.builtin.debug:
     msg:
       - "=== Java バージョン比較 ==="
       - "作業前: {{ __rhel_post_check_java_ver_before }}"
       - "作業後: {{ __rhel_post_check_java_ver_after }}"
-      - "変更有無: {{ 'java_info_before が存在しないため比較をスキップしました' if not (__rhel_post_check_java_info_before_stat['stat']['exists'] | bool) else ('変更あり' if (__rhel_post_check_java_ver_before != __rhel_post_check_java_ver_after and __rhel_post_check_java_ver_before != '取得失敗またはファイルなし') else '変更なし') }}"
+      - "変更有無: {{ 'Java未導入のため比較をスキップしました' if not (__rhel_post_check_java_info_before_stat['stat']['exists'] | bool) else ('変更あり' if (__rhel_post_check_java_ver_before != __rhel_post_check_java_ver_after and __rhel_post_check_java_ver_before != '取得失敗またはファイルなし') else '変更なし') }}"
  
 # --------------------------------------------------
 # 2. カーネルバージョンの比較・表示

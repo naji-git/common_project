@@ -1,23 +1,37 @@
 ---
 # ============================================================================
-# 作業ディレクトリ・作業年月の設定
+# 作業ディレクトリ・作業日の設定
 # ============================================================================
  
-# パッチ作業のベースディレクトリ
-rhel_post_check_patch_base_dir: "/home/ansible"
+#パッチ作業のベースディレクトリ
+rhel_post_check_base_dir: "/home/ansible"
  
-# パッチ格納ディレクトリ（ベースディレクトリ配下として定義。整理処理で削除する）
-rhel_post_check_patch_storage_dir: "{{ rhel_post_check_patch_base_dir }}/patch"
+#パッチ作業証跡ディレクトリ
+rhel_post_check_patch_evidence_dir: "{{rhel_post_check_base_directory }}/rhel_patch"
  
-# パッチ作業の証跡格納ディレクトリ（ベースディレクトリ配下として定義）
-# rhel_pre_check が出力する rhel_pre_check_patch_evidence_dir と同じパスにすること
-rhel_post_check_patch_evidence_dir: "{{ rhel_post_check_patch_base_dir }}/rhel_patch"
+# パッチ（RPM）格納ディレクトリ（整理処理で削除する）
+# システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で指定する
+rhel_patch_rpm_directory: "/home/ansible/patch"
  
-# 作業年度およびパッチ提供月（退避ディレクトリ名 <年>_<月>_old に使用）
-# 作業ごとに個別プロジェクトの group_vars で指定する
-rhel_post_check_patch_work_year: "2026"
-rhel_post_check_patch_delivery_month: "11"
+# 退避ディレクトリ（<YYYYMMDD>）の作成先、および patch_mythos* の検索先
+# rhel_patch_base_directory の親ディレクトリ（末尾のスラッシュは除いて算出する）。ロール内部の判定用のため、通常は上書きしない
+__rhel_post_check_work_parent_dir: >-
+  {{ rhel_patch_base_directory | regex_replace('/+$', '') | dirname }}
  
+# 作業日（退避ディレクトリ名 <YYYYMMDD> に使用）
+# 既定では実行日を YYYYMMDD 形式で取得する。固定したい場合は個別プロジェクトの group_vars で指定する
+rhel_post_check_patch_work_day: >-
+  {{ ansible_facts['date_time']['date'] | replace('-', '') }}
+ 
+# ============================================================================
+# ca-certificates（e-ninsho CA）復旧の設定
+# ============================================================================
+ 
+# Java の cacerts のパスワード（Java 標準の既定値）
+rhel_post_check_ca_cert_keystore_password: "changeit"
+ 
+# 再インポート時に付与するエイリアス名
+#rhel_post_check_ca_cert_import_alias: "e-ninshoca"
 # ============================================================================
 # ServerProtect for Linux カーネルフックモジュール差し替えの設定
 # ============================================================================
@@ -46,12 +60,6 @@ rhel_post_check_splx_status_delay: 10
 # 稼働確認に成功した後にだけ書き込み、同一アーカイブの再適用時に再展開をスキップするために使う
 # 旧 rhel_splx_kernel_module ロールで適用済みのホストでも引き継げるよう、ファイル名は旧ロールと同じにしている
 rhel_post_check_splx_marker_path: "{{ rhel_post_check_splx_dir }}/.rhel_splx_kernel_module_applied"
- 
-# ============================================================================
-# ca_certificatesの再インポート
-# ============================================================================
- 
-rhel_post_check_ca_cert_keystore_password: "changeit"
  
 # ----------------------------------------------------------------------------
 # 任意の上書き変数（既定値のままで自動検出される）

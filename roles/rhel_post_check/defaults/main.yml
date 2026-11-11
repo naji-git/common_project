@@ -7,13 +7,13 @@
 rhel_post_check_base_dir: "/home/ansible"
  
 #パッチ作業証跡ディレクトリ
-rhel_post_check_patch_evidence_dir: "{{rhel_post_check_base_directory }}/rhel_patch"
+rhel_post_check_patch_evidence_dir: "{{rhel_post_check_base_dir }}/rhel_patch"
  
 # パッチ（RPM）格納ディレクトリ（整理処理で削除する）
 # システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で指定する
 rhel_patch_rpm_directory: "/home/ansible/patch"
  
-# 退避ディレクトリ（<YYYYMMDD>）の作成先、および patch_mythos* の検索先
+# パッチ作業証跡の退避ディレクトリ（<YYYYMMDD>）の作成先、および patch_mythos* の検索先
 # rhel_patch_base_directory の親ディレクトリ（末尾のスラッシュは除いて算出する）。ロール内部の判定用のため、通常は上書きしない
 __rhel_post_check_work_parent_dir: >-
   {{ rhel_patch_base_directory | regex_replace('/+$', '') | dirname }}

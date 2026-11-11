@@ -31,11 +31,11 @@
     __rhel_post_check_ca_alias_recorded: >-
       {{ (__rhel_post_check_ca_alias_slurp['content'] | b64decode | trim)
          if (__rhel_post_check_ca_alias_slurp is defined and __rhel_post_check_ca_alias_slurp['content'] is defined) else '' }}
-    # 退避ファイルの値 -> 指定変数 -> デフォルト値('ca_eninsho_202611') の優先順位で決定
+    # 退避ファイルの値 -> 指定変数 -> デフォルト値('e-ninshoca') の優先順位で決定
     __rhel_post_check_ca_target_alias: >-
       {{ __rhel_post_check_ca_alias_recorded
          if (__rhel_post_check_ca_alias_recorded | length > 0)
-         else (rhel_post_check_ca_cert_import_alias | default('ca_eninsho_202611')) }}
+         else (rhel_post_check_ca_cert_import_alias | default('e-ninshoca')) }}
     __rhel_post_check_ca_fingerprint_before: >-
       {{ __rhel_post_check_ca_fingerprint_before_slurp['content'] | b64decode | trim | lower }}
     __rhel_post_check_ca_keystore_aliases: >-

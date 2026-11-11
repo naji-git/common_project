@@ -1,4 +1,6 @@
 ---
+# roles/rhel_pre_check/tasks/main.yml
+ 
 - name: "Include pre-patch resource usage check tasks"
   ansible.builtin.include_tasks: check_resource_usage.yml
  
@@ -10,6 +12,9 @@
  
 - name: "Include httpd configuration backup tasks"
   ansible.builtin.include_tasks: backup_httpd_conf.yml
+ 
+- name: "Include ca-certificates backup tasks"
+  ansible.builtin.include_tasks: backup_ca_certificates_conf.yml
  
 - name: "Include PostgreSQL symlink backup tasks"
   ansible.builtin.include_tasks: check_postgresql_link.yml

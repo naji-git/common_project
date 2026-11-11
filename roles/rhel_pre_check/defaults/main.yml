@@ -8,19 +8,37 @@
 # 作業ディレクトリの設定
 # ============================================================================
  
-# パッチ作業のベースディレクトリ
-rhel_pre_check_patch_base_dir: "/home/ansible"
+# パッチ（RPM）格納ディレクトリ（整理処理で削除する）
+# システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で指定する
+rhel_patch_rpm_directory: "/home/ansible/patch"
  
-# パッチ作業の証跡格納ディレクトリ（ベースディレクトリ配下として定義）
-# rhel_post_check が参照する rhel_post_check_patch_evidence_dir と同じパスにすること
-rhel_pre_check_patch_evidence_dir: "{{ rhel_pre_check_patch_base_dir }}/rhel_patch"
+# エビデンス格納ディレクトリ（パッチ作業のベースディレクトリ）
+# rhel_pre_check と rhel_post_check で同じ変数を参照する。システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で指定する
+rhel_patch_base_directory: "/home/ansible/rhel_patch"
  
+# ============================================================================
+# ca-certificates（e-ninsho CA）退避の設定
+# ============================================================================
+ 
+# Java の cacerts から退避対象を探すエイリアスの検索パターン（大文字小文字を区別しない）
+rhel_pre_check_ca_cert_alias_pattern: "ninsho"
+ 
+# Java の cacerts のパスワード（Java 標準の既定値）
+rhel_pre_check_ca_cert_keystore_password: "changeit"
 # ============================================================================
 # /boot 空き容量確保（kernel-debug 削除）の設定
 # ============================================================================
  
 # プラットフォーム（kasou の場合のみ kernel-debug 削除を実行。それ以外はスキップ）
 rhel_pre_check_boot_space_platform: "{{ rhel_system_platform | default('') }}"
+ 
+# パッチ（RPM）格納ディレクトリ
+# 直下に kernel-debug のパッチ（下記パターンに一致するファイル）がある場合のみ、kernel-debug 削除を実行する
+# rhel_post_check と共通の変数。システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で指定する
+rhel_patch_rpm_directory: "/home/ansible/patch"
+ 
+# kernel-debug のパッチ RPM のファイル名パターン（kernel-debug-devel など別パッケージを除くため、バージョン部の数字で始める）
+rhel_pre_check_boot_space_patch_file_pattern: "kernel-debug-[0-9]*.rpm"
  
 # 対象パッケージ名（/boot の容量を占有するデバッグ用カーネルパッケージ）
 rhel_pre_check_boot_space_target_package_name: "kernel-debug"

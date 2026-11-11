@@ -12,7 +12,7 @@
 - name: "Save RPM package list to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_post_check_rpm_qa_result['stdout'] }}\n"
-    dest: "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_after"
+    dest: "{{ rhel_patch_base_directory }}/rpm_qa_after"
     mode: "0644"
  
 # --------------------------------------------------
@@ -20,7 +20,7 @@
 # --------------------------------------------------
 - name: "Check if pre-check RPM package list exists"
   ansible.builtin.stat:
-    path: "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_before"
+    path: "{{ rhel_patch_base_directory }}/rpm_qa_before"
   register: __rhel_post_check_rpm_qa_before_stat
  
 - name: "Compare pre and post patch RPM package lists"
@@ -30,7 +30,7 @@
     # 事前事後エビデンスの diff 結果から変更対象行のみをパイプと正規表現で抽出するため shell を使用
     - name: "Extract changed lines between pre and post patch RPM package lists"
       ansible.builtin.shell: >-
-        diff -u "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_before" "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_after" | grep -E '^[+-][^+-]'; exit ${PIPESTATUS[0]}
+        diff -u "{{ rhel_patch_base_directory }}/rpm_qa_before" "{{ rhel_patch_base_directory }}/rpm_qa_after" | grep -E '^[+-][^+-]'; exit ${PIPESTATUS[0]}
       args:
         executable: /bin/bash
       register: __rhel_post_check_rpm_qa_diff
@@ -40,7 +40,7 @@
     - name: "Save RPM package diff to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_post_check_rpm_qa_diff['stdout'] }}\n"
-        dest: "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_diff"
+        dest: "{{ rhel_patch_base_directory }}/rpm_qa_diff"
         mode: "0644"
  
     - name: "Display RPM package differences"
@@ -52,7 +52,7 @@
  
 - name: "Display skip message when pre-check RPM package list does not exist"
   ansible.builtin.debug:
-    msg: "[WARNING] rpm_qa_before が存在しません ({{ rhel_post_check_patch_evidence_dir }}/rpm_qa_before)。パッケージ差分の比較をスキップします。事前確認の実施有無を確認してください。"
+    msg: "[WARNING] rpm_qa_before が存在しません ({{ rhel_patch_base_directory }}/rpm_qa_before)。パッケージ差分の比較をスキップします。事前確認の実施有無を確認してください。"
   when: not (__rhel_post_check_rpm_qa_before_stat['stat']['exists'] | bool)
  
 # --------------------------------------------------
@@ -60,7 +60,7 @@
 # --------------------------------------------------
 - name: "Find backup repo files in evidence directory"
   ansible.builtin.find:
-    paths: "{{ rhel_post_check_patch_evidence_dir }}"
+    paths: "{{ rhel_patch_base_directory }}"
     patterns: "*.repo_before"
   register: __rhel_post_check_backup_repo_files
  

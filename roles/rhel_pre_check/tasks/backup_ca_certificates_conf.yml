@@ -1,0 +1,152 @@
+---
+# 1. java の実体パスを取得（java が無い場合は対象なしの判定）
+# command -v によるコマンド置換と readlink -f を1回で実行するため shell を使用
+- name: "Resolve real path of java executable"
+  ansible.builtin.shell: >-
+    readlink -f "$(command -v java)"
+  register: __rhel_pre_check_ca_java_path
+  changed_when: false
+  failed_when: __rhel_pre_check_ca_java_path['rc'] not in [0, 1]
+ 
+# 2. keytool の有無を確認（PATH 上に無い場合は対象なしの判定）
+# command -v はシェル組み込みコマンドのため shell を使用
+- name: "Check if keytool command exists"
+  ansible.builtin.shell: >-
+    command -v keytool
+  register: __rhel_pre_check_ca_keytool_path
+  changed_when: false
+  failed_when: __rhel_pre_check_ca_keytool_path['rc'] not in [0, 1]
+ 
+# 3. java と keytool が存在する場合のみ cacerts 内の対象証明書を確認
+- name: "Backup ca-certificates and collect fingerprint evidence"
+  when:
+    - __rhel_pre_check_ca_java_path['rc'] == 0
+    - __rhel_pre_check_ca_java_path['stdout'] | trim | length > 0
+    - __rhel_pre_check_ca_keytool_path['rc'] == 0
+  vars:
+    __rhel_pre_check_ca_cacerts_path: >-
+      {{ __rhel_pre_check_ca_java_path['stdout'] | trim | dirname | dirname }}/lib/security/cacerts
+    __rhel_pre_check_ca_aliases: >-
+      {{ __rhel_pre_check_ca_keystore_list['stdout_lines'] | default([])
+         | select('search', '(?i)' ~ rhel_pre_check_ca_cert_alias_pattern)
+         | map('regex_replace', ',.*$', '') | map('trim') | list }}
+  block:
+ 
+    - name: "List certificates in Java cacerts keystore"
+      ansible.builtin.command:
+        argv:
+          - keytool
+          - -list
+          - -keystore
+          - "{{ __rhel_pre_check_ca_cacerts_path }}"
+          - -storepass
+          - "{{ rhel_pre_check_ca_cert_keystore_password }}"
+      register: __rhel_pre_check_ca_keystore_list
+      changed_when: false
+ 
+    - name: "Assert at most one target alias exists in cacerts"
+      ansible.builtin.assert:
+        that:
+          - __rhel_pre_check_ca_aliases | length <= 1
+        fail_msg: >-
+          [ERROR] cacerts に '{{ rhel_pre_check_ca_cert_alias_pattern }}' を含むエイリアスが複数あります（{{ __rhel_pre_check_ca_aliases | join(', ') }}）。
+          退避対象を特定できないため、keytool -list で内容を確認し、退避対象を判断してください。
+        quiet: true
+ 
+    - name: "Display skip message when no target ca-certificates exists"
+      ansible.builtin.debug:
+        msg: "ca-certificatesの対象が無いので処理をスキップします"
+      when: __rhel_pre_check_ca_aliases | length == 0
+ 
+    - name: "Export target ca-certificates and save fingerprint"
+      when: __rhel_pre_check_ca_aliases | length > 0
+      vars:
+        __rhel_pre_check_ca_alias: "{{ __rhel_pre_check_ca_aliases | first }}"
+        __rhel_pre_check_ca_fingerprints: >-
+          {{ __rhel_pre_check_ca_fingerprint_out['stdout'] | default('')
+             | regex_findall('SHA256: *([0-9A-Fa-f:]+)') }}
+      block:
+ 
+        - name: "Create evidence directory for patch operations"
+          ansible.builtin.file:
+            path: "{{ rhel_patch_base_directory }}"
+            state: directory
+            mode: "0755"
+ 
+        # keytool には証明書を書き出す専用モジュールが無いため command を使用（ファイルは毎回上書きされる）
+        - name: "Export target ca-certificates to evidence directory"
+          ansible.builtin.command:
+            argv:
+              - keytool
+              - -exportcert
+              - -alias
+              - "{{ __rhel_pre_check_ca_alias }}"
+              - -keystore
+              - "{{ __rhel_pre_check_ca_cacerts_path }}"
+              - -storepass
+              - "{{ rhel_pre_check_ca_cert_keystore_password }}"
+              - -rfc
+              - -file
+              - "{{ rhel_patch_base_directory }}/e-ninshoca.crt"
+          changed_when: true
+ 
+        - name: "Check if exported ca-certificates file exists"
+          ansible.builtin.stat:
+            path: "{{ rhel_patch_base_directory }}/e-ninshoca.crt"
+          register: __rhel_pre_check_ca_cert_stat
+ 
+        - name: "Assert exported ca-certificates file exists"
+          ansible.builtin.assert:
+            that:
+              - __rhel_pre_check_ca_cert_stat['stat']['exists'] | bool
+            fail_msg: >-
+              [ERROR] {{ rhel_patch_base_directory }}/e-ninshoca.crt が作成されていません。
+              keytool の実行ユーザーと {{ rhel_patch_base_directory }} の書き込み権限を確認してください。
+            success_msg: "[OK] ca-certificates を {{ rhel_patch_base_directory }}/e-ninshoca.crt に退避しました（エイリアス: {{ __rhel_pre_check_ca_alias }}）。"
+ 
+        # rhel_post_check は別ジョブで実行されるため、退避したエイリアス名を証跡として残す
+        - name: "Save target alias name to evidence file"
+          ansible.builtin.copy:
+            content: "{{ __rhel_pre_check_ca_alias }}\n"
+            dest: "{{ rhel_patch_base_directory }}/ca-certificates_alias_before"
+            mode: "0644"
+ 
+        # フィンガープリントは keytool -list -v の出力から取得するため command を使用
+        - name: "Get SHA256 fingerprint of target ca-certificates"
+          ansible.builtin.command:
+            argv:
+              - keytool
+              - -list
+              - -v
+              - -alias
+              - "{{ __rhel_pre_check_ca_alias }}"
+              - -keystore
+              - "{{ __rhel_pre_check_ca_cacerts_path }}"
+              - -storepass
+              - "{{ rhel_pre_check_ca_cert_keystore_password }}"
+          register: __rhel_pre_check_ca_fingerprint_out
+          changed_when: false
+ 
+        - name: "Assert SHA256 fingerprint is found"
+          ansible.builtin.assert:
+            that:
+              - __rhel_pre_check_ca_fingerprints | length > 0
+            fail_msg: >-
+              [ERROR] エイリアス {{ __rhel_pre_check_ca_alias }} の SHA256 フィンガープリントを取得できませんでした。
+              keytool -list -v -alias {{ __rhel_pre_check_ca_alias }} の出力を確認してください。
+            quiet: true
+ 
+        - name: "Save SHA256 fingerprint to evidence file"
+          ansible.builtin.copy:
+            content: "{{ __rhel_pre_check_ca_fingerprints | first }}\n"
+            dest: "{{ rhel_patch_base_directory }}/ca-certificates_FingerprintSHA256_before"
+            mode: "0644"
+ 
+- name: "Display skip message when java or keytool is not installed"
+  ansible.builtin.debug:
+    msg: "ca-certificatesの対象が無いので処理をスキップします"
+  when: >-
+    __rhel_pre_check_ca_java_path['rc'] != 0
+    or (__rhel_pre_check_ca_java_path['stdout'] | trim | length == 0)
+    or __rhel_pre_check_ca_keytool_path['rc'] != 0
+

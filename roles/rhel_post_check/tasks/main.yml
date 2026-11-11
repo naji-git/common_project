@@ -1,4 +1,6 @@
 ---
+# roles/rhel_post_check/tasks/main.yml
+ 
 - name: "Include post-patch resource usage check tasks"
   ansible.builtin.include_tasks: check_resource_usage.yml
  
@@ -7,6 +9,9 @@
  
 - name: "Include post-patch package information collection tasks"
   ansible.builtin.include_tasks: check_package_info.yml
+ 
+- name: "Include ca-certificates restore tasks"
+  ansible.builtin.include_tasks: restore_ca_certificates_conf.yml
  
 - name: "Include httpd configuration restore tasks"
   ansible.builtin.include_tasks: restore_httpd_conf.yml
@@ -20,6 +25,6 @@
 - name: "Include splx kernel module replacement tasks"
   ansible.builtin.include_tasks: replace_splx_kernel_module.yml
  
-- name: "Include cleanup of patch directories and rotation of archives tasks"
+- name: "Include Clean up patch directories and rotate archives"
   ansible.builtin.include_tasks: check_health_and_cleanup.yml
 

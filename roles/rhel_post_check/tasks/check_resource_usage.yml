@@ -1,69 +1,68 @@
 ---
 - name: "Create evidence directory for post-check"
   ansible.builtin.file:
-    path: "{{ rhel_post_check_patch_evidence_dir }}"
+    path: "{{ rhel_patch_base_directory }}"
     state: directory
     mode: "0755"
-
+ 
 # 過去ログを含めた sar 全体出力をエビデンス化するため command を使用
 - name: "Get sar CPU usage logs after patch"
   ansible.builtin.command: "sar -u"
   register: __rhel_post_check_cpu_usage
   changed_when: false
-
+ 
 - name: "Save CPU usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_post_check_cpu_usage['stdout'] }}\n"
-    dest: "{{ rhel_post_check_patch_evidence_dir }}/cpu_usage_after"
+    dest: "{{ rhel_patch_base_directory }}/cpu_usage_after"
     mode: "0644"
-
+ 
 # 当日の sar メモリログ全体をエビデンス化（CPUの sar -u と粒度を統一）するため command を使用
 - name: "Get sar memory usage logs after patch"
   ansible.builtin.command: "sar -r"
   register: __rhel_post_check_mem_usage
   changed_when: false
-
+ 
 - name: "Save memory usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_post_check_mem_usage['stdout'] }}\n"
-    dest: "{{ rhel_post_check_patch_evidence_dir }}/mem_usage_after"
+    dest: "{{ rhel_patch_base_directory }}/mem_usage_after"
     mode: "0644"
-
+ 
 # システム全体のディスク構成・使用状況をエビデンス化するため command を使用
 - name: "Get entire disk usage logs after patch"
   ansible.builtin.command: "df -h"
   register: __rhel_post_check_disk_usage
   changed_when: false
-
+ 
 - name: "Save disk usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_post_check_disk_usage['stdout'] }}\n"
-    dest: "{{ rhel_post_check_patch_evidence_dir }}/disk_usage_after"
+    dest: "{{ rhel_patch_base_directory }}/disk_usage_after"
     mode: "0644"
-
+ 
 - name: "Check if pre-check resource usage files exist"
   ansible.builtin.stat:
-    path: "{{ rhel_post_check_patch_evidence_dir }}/{{ item }}"
+    path: "{{ rhel_patch_base_directory }}/{{ item }}"
   loop:
     - "cpu_usage_before"
     - "mem_usage_before"
     - "disk_usage_before"
   register: __rhel_post_check_usage_before_stats
-
+ 
 - name: "Display warning when pre-check resource usage file does not exist"
   ansible.builtin.debug:
     msg: >-
-      [WARNING] {{ item['item'] }} が存在しません ({{ rhel_post_check_patch_evidence_dir }}/{{ item['item'] }})。
+      [WARNING] {{ item['item'] }} が存在しません ({{ rhel_patch_base_directory }}/{{ item['item'] }})。
       {{ item['item'] }} に対応するリソース比較確認をスキップします。事前確認の実施有無を確認してください。
   loop: "{{ __rhel_post_check_usage_before_stats['results'] }}"
   loop_control:
     label: "{{ item['item'] }}"
   when: not (item['stat']['exists'] | bool)
-
+ 
 - name: "Compare resource usage with pre-patch status"
   when: __rhel_post_check_usage_before_stats['results'] | selectattr('stat.exists', 'equalto', true) | list | length > 0
   block:
-
     # 既存エビデンスファイルの解析・数値パースおよび差分計算をPythonで一括処理するため shell を使用
     - name: "Analyze resource usage comparison with pre-patch status"
       ansible.builtin.shell: |
@@ -71,15 +70,12 @@
         # -*- coding: utf-8 -*-
         import os
         import datetime
-
-        evidence_dir = "{{ rhel_post_check_patch_evidence_dir }}"
-
+        evidence_dir = "{{ rhel_patch_base_directory }}"
         def get_file_mtime_str(path):
             if os.path.exists(path):
                 ts = os.path.getmtime(path)
                 return datetime.datetime.fromtimestamp(ts).strftime("%H:%M:%S")
             return "N/A"
-
         # --- 1. CPU使用率 (sar -u の末尾データ行: %idle 列から算出) ---
         def get_sar_cpu(filepath):
             val = None
@@ -105,12 +101,10 @@
                         except ValueError:
                             pass
             return val
-
         cpu_before_file = os.path.join(evidence_dir, "cpu_usage_before")
         cpu_after_file = os.path.join(evidence_dir, "cpu_usage_after")
         cpu_before_val = get_sar_cpu(cpu_before_file)
         cpu_after_val = get_sar_cpu(cpu_after_file)
-
         # --- 2. メモリ使用率 (sar -r の末尾データ行: %memused 列から取得) ---
         def get_sar_mem(filepath):
             val = None
@@ -137,12 +131,10 @@
                         except ValueError:
                             pass
             return val
-
         mem_before_file = os.path.join(evidence_dir, "mem_usage_before")
         mem_after_file = os.path.join(evidence_dir, "mem_usage_after")
         mem_before_val = get_sar_mem(mem_before_file)
         mem_after_val = get_sar_mem(mem_after_file)
-
         # --- 3. ディスク(/)使用率 (df -h のマウントポイント / 行から取得) ---
         def get_disk_root(filepath):
             val = None
@@ -160,12 +152,10 @@
                                 except ValueError:
                                     pass
             return val
-
         disk_before_file = os.path.join(evidence_dir, "disk_usage_before")
         disk_after_file = os.path.join(evidence_dir, "disk_usage_after")
         disk_before_val = get_disk_root(disk_before_file)
         disk_after_val = get_disk_root(disk_after_file)
-
         def format_diff(before, after):
             if before is None or after is None:
                 b_str = "{0:.2f}%".format(before) if before is not None else "None"
@@ -174,22 +164,20 @@
             diff = after - before
             sign = "+" if diff > 0 else ""
             return "パッチ適用前: {0:.2f}% -> パッチ適用後: {1:.2f}% (増減: {2}{3:.2f}%)".format(before, after, sign, diff)
-
         if os.path.exists(cpu_before_file):
             print("=== CPU使用率 ===")
             print(format_diff(cpu_before_val, cpu_after_val))
-
         if os.path.exists(mem_before_file):
             print("=== メモリ使用率 ===")
             print(format_diff(mem_before_val, mem_after_val))
-
         if os.path.exists(disk_before_file):
             print("=== ディスク(/)使用率 ===")
             print(format_diff(disk_before_val, disk_after_val))
         EOF
       register: __rhel_post_check_comparison_result
       changed_when: false
-
+ 
     - name: "Display resource usage comparison"
       ansible.builtin.debug:
         msg: "{{ __rhel_post_check_comparison_result['stdout_lines'] }}"
+

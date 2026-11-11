@@ -4,12 +4,12 @@
 # ==================================================
 - name: "Remove patch storage directory"
   ansible.builtin.file:
-    path: "{{ rhel_post_check_patch_storage_dir }}"
+    path: "{{ rhel_patch_rpm_directory }}"
     state: absent
  
 - name: "Verify patch storage directory is removed"
   ansible.builtin.stat:
-    path: "{{ rhel_post_check_patch_storage_dir }}"
+    path: "{{ rhel_patch_rpm_directory }}"
   register: __rhel_post_check_patch_dir_stat
  
 - name: "Assert patch storage directory does not exist"
@@ -17,15 +17,15 @@
     that:
       - not __rhel_post_check_patch_dir_stat['stat']['exists']
     fail_msg: >-
-      [ERROR] {{ rhel_post_check_patch_storage_dir }} の削除に失敗しました。ファイルが他プロセスに使用されていないか、パーミッションを確認して手動で削除してください。
-    success_msg: "[OK] {{ rhel_post_check_patch_storage_dir }} は正常に削除されました。"
+      [ERROR] {{ rhel_patch_rpm_directory }} の削除に失敗しました。ファイルが他プロセスに使用されていないか、パーミッションを確認して手動で削除してください。
+    success_msg: "[OK] {{ rhel_patch_rpm_directory }} は正常に削除されました。"
  
 # ==================================================
 # 2. パッチ作業ディレクトリのリネーム退避
 # ==================================================
 - name: "Find patch_mythos directories or files"
   ansible.builtin.find:
-    paths: "{{ rhel_post_check_patch_base_dir }}"
+    paths: "{{ __rhel_post_check_work_parent_dir }}"
     patterns: "patch_mythos*"
     file_type: any
   register: __rhel_post_check_mythos_targets
@@ -36,14 +36,14 @@
     state: absent
   loop: "{{ __rhel_post_check_mythos_targets['files'] }}"
  
-- name: "Check if rhel_post_check_patch_evidence_dir directory exists"
+- name: "Check if rhel_patch_base_directory directory exists"
   ansible.builtin.stat:
-    path: "{{ rhel_post_check_patch_evidence_dir }}"
+    path: "{{ rhel_patch_base_directory }}"
   register: __rhel_post_check_rhel_patch_stat
  
-- name: "Archive and cleanup rhel_post_check_patch_evidence_dir directory"
+- name: "Archive and cleanup rhel_patch_base_directory directory"
   vars:
-    __rhel_post_check_archive_dir: "{{ rhel_post_check_patch_base_dir }}/{{ rhel_post_check_patch_work_year }}_{{ rhel_post_check_patch_delivery_month }}_old"
+    __rhel_post_check_archive_dir: "{{ __rhel_post_check_work_parent_dir }}/{{ rhel_post_check_patch_work_day }}"
   when: __rhel_post_check_rhel_patch_stat['stat']['exists'] | bool
   block:
  
@@ -54,50 +54,60 @@
         mode: "0755"
  
     # ワイルドカード展開を伴う一括移動のため shell を使用
-    - name: "Move contents from rhel_post_check_patch_evidence_dir to archive directory"
+    - name: "Move contents from rhel_patch_base_directory to archive directory"
       ansible.builtin.shell: >-
-        mv "{{ rhel_post_check_patch_evidence_dir }}"/* "{{ __rhel_post_check_archive_dir }}/"
+        mv "{{ rhel_patch_base_directory }}"/* "{{ __rhel_post_check_archive_dir }}/"
       changed_when: true
  
-    - name: "Remove rhel_post_check_patch_evidence_dir directory"
+    - name: "Remove rhel_patch_base_directory directory"
       ansible.builtin.file:
-        path: "{{ rhel_post_check_patch_evidence_dir }}"
+        path: "{{ rhel_patch_base_directory }}"
         state: absent
  
-    - name: "Verify rhel_post_check_patch_evidence_dir directory is removed"
+    - name: "Verify rhel_patch_base_directory directory is removed"
       ansible.builtin.stat:
-        path: "{{ rhel_post_check_patch_evidence_dir }}"
+        path: "{{ rhel_patch_base_directory }}"
       register: __rhel_post_check_rhel_patch_check
  
-    - name: "Assert rhel_post_check_patch_evidence_dir directory is removed"
+    - name: "Assert rhel_patch_base_directory directory is removed"
       ansible.builtin.assert:
         that:
           - not __rhel_post_check_rhel_patch_check['stat']['exists']
         fail_msg: >-
-          [ERROR] {{ rhel_post_check_patch_evidence_dir }} の削除に失敗しました。残存ファイルを確認の上、手動で退避または削除を実施してください。
-        success_msg: "[OK] {{ rhel_post_check_patch_evidence_dir }} は正常に退避・削除されました。"
+          [ERROR] {{ rhel_patch_base_directory }} の削除に失敗しました。残存ファイルを確認の上、手動で退避または削除を実施してください。
+        success_msg: "[OK] {{ rhel_patch_base_directory }} は正常に退避・削除されました。"
  
 # ==================================================
 # 3. パッチ作業ディレクトリのローテーション (5世代保持)
 # ==================================================
+# 退避ディレクトリ名は既存の YYYY_MM_old と新規の YYYYMMDD が混在する（YYYYMMDD へ統一する移行期間のため）
 - name: "Find existing archive directories"
   ansible.builtin.find:
-    paths: "{{ rhel_post_check_patch_base_dir }}"
+    paths: "{{ __rhel_post_check_work_parent_dir }}"
     file_type: directory
-    patterns: "^[0-9]{4}_[0-9]{2}_old$"
+    patterns: "^([0-9]{4}_[0-9]{2}_old|[0-9]{8})$"
     use_regex: true
   register: __rhel_post_check_archive_dirs
  
-# ディレクトリ名で昇順ソートし、最新5世代から漏れた古いディレクトリを抽出
+# 名前のままソートすると形式によって順序が崩れるため、数字部分の末尾に 00 を付けた値（YYYY_MM_old は月初扱い。YYYYMMDD は日付そのまま）で昇順ソートし、
+# 最新5世代から漏れた古いディレクトリを抽出
 - name: "Determine old archive directories to purge"
+  vars:
+    __rhel_post_check_archive_paths: >-
+      {{ __rhel_post_check_archive_dirs['files'] | map(attribute='path') | list }}
+    __rhel_post_check_archive_sort_keys: >-
+      {{ __rhel_post_check_archive_paths | map('basename')
+         | map('regex_replace', '[^0-9]', '') | map('regex_replace', '$', '00') | list }}
+    __rhel_post_check_archive_sorted: >-
+      {{ __rhel_post_check_archive_sort_keys | zip(__rhel_post_check_archive_paths)
+         | sort | map(attribute=1) | list }}
   ansible.builtin.set_fact:
     __rhel_post_check_dirs_to_remove: >-
       {{
-       (__rhel_post_check_archive_dirs['files'] | map(attribute='path') | sort)[:-5]
-       if (__rhel_post_check_archive_dirs['files'] | length > 5)
+       __rhel_post_check_archive_sorted[:-5]
+       if (__rhel_post_check_archive_sorted | length > 5)
        else []
       }}
- 
 - name: "Display rotation status"
   ansible.builtin.debug:
     msg:

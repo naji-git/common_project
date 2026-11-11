@@ -7,7 +7,6 @@
     __rhel_pre_check_sam_log_path: >-
       /usr/local/sam/kanshi/log/filtered/msg_filtered_{{ ansible_facts['date_time']['date'] | replace('-', '') }}.log
   block:
- 
     - name: "Check if today SAM filtered log file exists"
       ansible.builtin.stat:
         path: "{{ __rhel_pre_check_sam_log_path }}"
@@ -29,8 +28,8 @@
           - "=== SAM Filtered Log ({{ __rhel_pre_check_sam_log_path }}) ==="
           - >-
             {{ __rhel_pre_check_sam_log_text.splitlines()
-               if (__rhel_pre_check_sam_log_text | trim | length > 0)
-               else ['(当日分のSAM監視ログファイルが存在しません)'] }}
+                if (__rhel_pre_check_sam_log_text | trim | length > 0)
+                else ['(当日分のSAM監視ログファイルが存在しません)'] }}
       when: __rhel_pre_check_sam_log_stat['stat']['exists'] | bool
  
     - name: "Create SAM filtered log file when it does not exist"
@@ -55,7 +54,6 @@
 # ==================================================
 # 1. httpd/jboss サービスの停止
 # ==================================================
- 
 # --------------------------------------------------
 # 1-1. 開発環境: httpd/jboss サービスの停止
 # --------------------------------------------------
@@ -79,7 +77,7 @@
  
     - name: Create directory for service state files
       ansible.builtin.file:
-        path: "{{ rhel_pre_check_patch_evidence_dir }}"
+        path: "{{ rhel_patch_base_directory }}"
         state: directory
         mode: "0755"
       become: true
@@ -87,7 +85,7 @@
     - name: Save list of running httpd services
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_httpd_running_services | to_nice_json }}"
-        dest: "{{ rhel_pre_check_patch_evidence_dir }}/httpd_running_services_pre_check.json"
+        dest: "{{ rhel_patch_base_directory }}/httpd_running_services_pre_check.json"
         mode: "0644"
       become: true
  
@@ -113,7 +111,7 @@
     - name: Save list of running jboss services
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_jboss_running_services | to_nice_json }}"
-        dest: "{{ rhel_pre_check_patch_evidence_dir }}/jboss_running_services_pre_check.json"
+        dest: "{{ rhel_patch_base_directory }}/jboss_running_services_pre_check.json"
         mode: "0644"
       become: true
  
@@ -140,7 +138,6 @@
 # ==================================================
 # 2. JP1サービスの停止
 # ==================================================
- 
 # JP1（開発・プレ本・本番の全環境で同じ手順）
 # 停止順序は JP1/AJS3 → JP1/Base のため、サービス名リストの並び順をそのまま停止順とする
 # 存在しないサービスは対象から除外され、以降の記録・停止・確認の対象にならない
@@ -163,7 +160,7 @@
  
     - name: Create directory for service state files
       ansible.builtin.file:
-        path: "{{ rhel_pre_check_patch_evidence_dir }}"
+        path: "{{ rhel_patch_base_directory }}"
         state: directory
         mode: "0755"
       become: true
@@ -171,7 +168,7 @@
     - name: Save list of running JP1 services
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_jp1_running_services | to_nice_json }}"
-        dest: "{{ rhel_pre_check_patch_evidence_dir }}/jp1_running_services_pre_check.json"
+        dest: "{{ rhel_patch_base_directory }}/jp1_running_services_pre_check.json"
         mode: "0644"
       become: true
  

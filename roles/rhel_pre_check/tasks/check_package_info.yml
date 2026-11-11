@@ -18,7 +18,7 @@
 - name: "Save package manager configuration to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_pkg_conf_slurp['content'] | b64decode }}"
-    dest: "{{ rhel_pre_check_patch_evidence_dir }}/{{ __rhel_pre_check_target_pkg_conf | basename }}_before"
+    dest: "{{ rhel_patch_base_directory }}/{{ __rhel_pre_check_target_pkg_conf | basename }}_before"
     mode: "0644"
  
 # --------------------------------------------------
@@ -67,7 +67,7 @@
 - name: "Save RPM package list to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_rpm_qa_result['stdout'] }}\n"
-    dest: "{{ rhel_pre_check_patch_evidence_dir }}/rpm_qa_before"
+    dest: "{{ rhel_patch_base_directory }}/rpm_qa_before"
     mode: "0644"
  
 # --------------------------------------------------
@@ -85,7 +85,7 @@
     - name: "Backup repo files to evidence directory before modification"
       ansible.builtin.copy:
         src: "{{ item }}"
-        dest: "{{ rhel_pre_check_patch_evidence_dir }}/{{ item | basename }}_before"
+        dest: "{{ rhel_patch_base_directory }}/{{ item | basename }}_before"
         remote_src: true
         mode: "0644"
       loop: "{{ __rhel_pre_check_enabled_repos['stdout_lines'] }}"

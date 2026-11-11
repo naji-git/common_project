@@ -22,7 +22,7 @@
     - name: "Save PostgreSQL symlinks under /bin to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_pg_link_bin['stdout'] }}\n"
-        dest: "{{ rhel_pre_check_patch_evidence_dir }}/pg_link_bin_before"
+        dest: "{{ rhel_patch_base_directory }}/pg_link_bin_before"
         mode: "0644"
       when: __rhel_pre_check_pg_link_bin['stdout'] | length > 0
  
@@ -39,7 +39,7 @@
     - name: "Save PostgreSQL symlinks under /usr/bin to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_pg_link_usr['stdout'] }}\n"
-        dest: "{{ rhel_pre_check_patch_evidence_dir }}/pg_link_usr_before"
+        dest: "{{ rhel_patch_base_directory }}/pg_link_usr_before"
         mode: "0644"
       when: __rhel_pre_check_pg_link_usr['stdout'] | length > 0
  

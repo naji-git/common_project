@@ -1,4 +1,0 @@
----
-# RHEL 8 (dnf)
-# パッケージマネージャの設定ファイル
-__rhel_pre_check_target_pkg_conf: "/etc/dnf/dnf.conf"

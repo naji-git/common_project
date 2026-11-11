@@ -14,7 +14,7 @@ rhel_patch_rpm_directory: "/home/ansible/patch"
  
 # エビデンス格納ディレクトリ（パッチ作業のベースディレクトリ）
 # rhel_pre_check と rhel_post_check で同じ変数を参照する。システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で指定する
-rhel_patch_base_directory: "/home/ansible/rhel_patch"
+rhel_pre_check_patch_evidence_dir: "/home/ansible/rhel_patch"
  
 # ============================================================================
 # ca-certificates（e-ninsho CA）退避の設定

@@ -77,7 +77,7 @@
  
     - name: Create directory for service state files
       ansible.builtin.file:
-        path: "{{ rhel_patch_base_directory }}"
+        path: "{{ rhel_pre_check_patch_evidence_dir }}"
         state: directory
         mode: "0755"
       become: true
@@ -85,7 +85,7 @@
     - name: Save list of running httpd services
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_httpd_running_services | to_nice_json }}"
-        dest: "{{ rhel_patch_base_directory }}/httpd_running_services_pre_check.json"
+        dest: "{{ rhel_pre_check_patch_evidence_dir }}/httpd_running_services_pre_check.json"
         mode: "0644"
       become: true
  
@@ -111,7 +111,7 @@
     - name: Save list of running jboss services
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_jboss_running_services | to_nice_json }}"
-        dest: "{{ rhel_patch_base_directory }}/jboss_running_services_pre_check.json"
+        dest: "{{ rhel_pre_check_patch_evidence_dir }}/jboss_running_services_pre_check.json"
         mode: "0644"
       become: true
  
@@ -160,7 +160,7 @@
  
     - name: Create directory for service state files
       ansible.builtin.file:
-        path: "{{ rhel_patch_base_directory }}"
+        path: "{{ rhel_pre_check_patch_evidence_dir }}"
         state: directory
         mode: "0755"
       become: true
@@ -168,7 +168,7 @@
     - name: Save list of running JP1 services
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_jp1_running_services | to_nice_json }}"
-        dest: "{{ rhel_patch_base_directory }}/jp1_running_services_pre_check.json"
+        dest: "{{ rhel_pre_check_patch_evidence_dir }}/jp1_running_services_pre_check.json"
         mode: "0644"
       become: true
  

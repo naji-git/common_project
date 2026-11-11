@@ -69,7 +69,7 @@
  
         - name: "Create evidence directory for patch operations"
           ansible.builtin.file:
-            path: "{{ rhel_patch_base_directory }}"
+            path: "{{ rhel_pre_check_patch_evidence_dir }}"
             state: directory
             mode: "0755"
  
@@ -87,12 +87,12 @@
               - "{{ rhel_pre_check_ca_cert_keystore_password }}"
               - -rfc
               - -file
-              - "{{ rhel_patch_base_directory }}/e-ninshoca.crt"
+              - "{{ rhel_pre_check_patch_evidence_dir }}/e-ninshoca.crt"
           changed_when: true
  
         - name: "Check if exported ca-certificates file exists"
           ansible.builtin.stat:
-            path: "{{ rhel_patch_base_directory }}/e-ninshoca.crt"
+            path: "{{ rhel_pre_check_patch_evidence_dir }}/e-ninshoca.crt"
           register: __rhel_pre_check_ca_cert_stat
  
         - name: "Assert exported ca-certificates file exists"
@@ -100,15 +100,15 @@
             that:
               - __rhel_pre_check_ca_cert_stat['stat']['exists'] | bool
             fail_msg: >-
-              [ERROR] {{ rhel_patch_base_directory }}/e-ninshoca.crt が作成されていません。
-              keytool の実行ユーザーと {{ rhel_patch_base_directory }} の書き込み権限を確認してください。
-            success_msg: "[OK] ca-certificates を {{ rhel_patch_base_directory }}/e-ninshoca.crt に退避しました（エイリアス: {{ __rhel_pre_check_ca_alias }}）。"
+              [ERROR] {{ rhel_pre_check_patch_evidence_dir }}/e-ninshoca.crt が作成されていません。
+              keytool の実行ユーザーと {{ rhel_pre_check_patch_evidence_dir }} の書き込み権限を確認してください。
+            success_msg: "[OK] ca-certificates を {{ rhel_pre_check_patch_evidence_dir }}/e-ninshoca.crt に退避しました（エイリアス: {{ __rhel_pre_check_ca_alias }}）。"
  
         # rhel_post_check は別ジョブで実行されるため、退避したエイリアス名を証跡として残す
         - name: "Save target alias name to evidence file"
           ansible.builtin.copy:
             content: "{{ __rhel_pre_check_ca_alias }}\n"
-            dest: "{{ rhel_patch_base_directory }}/ca-certificates_alias_before"
+            dest: "{{ rhel_pre_check_patch_evidence_dir }}/ca-certificates_alias_before"
             mode: "0644"
  
         # フィンガープリントは keytool -list -v の出力から取得するため command を使用
@@ -139,7 +139,7 @@
         - name: "Save SHA256 fingerprint to evidence file"
           ansible.builtin.copy:
             content: "{{ __rhel_pre_check_ca_fingerprints | first }}\n"
-            dest: "{{ rhel_patch_base_directory }}/ca-certificates_FingerprintSHA256_before"
+            dest: "{{ rhel_pre_check_patch_evidence_dir }}/ca-certificates_FingerprintSHA256_before"
             mode: "0644"
  
 - name: "Display skip message when java or keytool is not installed"

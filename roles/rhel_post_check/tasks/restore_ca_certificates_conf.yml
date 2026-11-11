@@ -2,18 +2,18 @@
 # 1. 事前退避した証明書ファイルの存在確認（存在しない場合は作業不要の判定）
 - name: "Check if pre-patch ca-certificates export file exists"
   ansible.builtin.stat:
-    path: "{{ rhel_patch_base_directory }}/e-ninshoca.crt"
+    path: "{{ rhel_post_check_patch_evidence_dir }}/e-ninshoca.crt"
   register: __rhel_post_check_ca_cert_stat
  
 - name: "Check if pre-patch ca-certificates fingerprint file exists"
   ansible.builtin.stat:
-    path: "{{ rhel_patch_base_directory }}/ca-certificates_FingerprintSHA256_before"
+    path: "{{ rhel_post_check_patch_evidence_dir }}/ca-certificates_FingerprintSHA256_before"
   register: __rhel_post_check_ca_fingerprint_before_stat
   when: __rhel_post_check_ca_cert_stat['stat']['exists'] | bool
  
 - name: "Check if pre-patch ca-certificates alias file exists"
   ansible.builtin.stat:
-    path: "{{ rhel_patch_base_directory }}/ca-certificates_alias_before"
+    path: "{{ rhel_post_check_patch_evidence_dir }}/ca-certificates_alias_before"
   register: __rhel_post_check_ca_alias_before_stat
   when: __rhel_post_check_ca_cert_stat['stat']['exists'] | bool
  
@@ -61,7 +61,7 @@
  
     - name: "Create evidence directory for patch operations"
       ansible.builtin.file:
-        path: "{{ rhel_patch_base_directory }}"
+        path: "{{ rhel_post_check_patch_evidence_dir }}"
         state: directory
         mode: "0755"
  
@@ -80,7 +80,7 @@
           - __rhel_post_check_ca_java_path['rc'] == 0
           - __rhel_post_check_ca_java_path['stdout'] | trim | length > 0
         fail_msg: >-
-          [ERROR] java が見つかりません。{{ rhel_patch_base_directory }}/e-ninshoca.crt は存在するため、
+          [ERROR] java が見つかりません。{{ rhel_post_check_patch_evidence_dir }}/e-ninshoca.crt は存在するため、
           Java の導入状態を確認し、ca-certificates を手動で再インポートしてください。
         quiet: true
  
@@ -89,18 +89,18 @@
         that:
           - __rhel_post_check_ca_fingerprint_before_stat['stat']['exists'] | bool
         fail_msg: >-
-          [ERROR] {{ rhel_patch_base_directory }}/ca-certificates_FingerprintSHA256_before が存在しません。
+          [ERROR] {{ rhel_post_check_patch_evidence_dir }}/ca-certificates_FingerprintSHA256_before が存在しません。
           rhel_pre_check の実行結果を確認してください。
         quiet: true
  
     - name: "Read pre-patch ca-certificates fingerprint"
       ansible.builtin.slurp:
-        src: "{{ rhel_patch_base_directory }}/ca-certificates_FingerprintSHA256_before"
+        src: "{{ rhel_post_check_patch_evidence_dir }}/ca-certificates_FingerprintSHA256_before"
       register: __rhel_post_check_ca_fingerprint_before_slurp
  
     - name: "Read pre-patch ca-certificates alias name"
       ansible.builtin.slurp:
-        src: "{{ rhel_patch_base_directory }}/ca-certificates_alias_before"
+        src: "{{ rhel_post_check_patch_evidence_dir }}/ca-certificates_alias_before"
       register: __rhel_post_check_ca_alias_slurp
       when: __rhel_post_check_ca_alias_before_stat['stat']['exists'] | bool
  
@@ -147,7 +147,7 @@
         - name: "Save SHA256 fingerprint after patch to evidence file"
           ansible.builtin.copy:
             content: "{{ __rhel_post_check_ca_fingerprint_after }}\n"
-            dest: "{{ rhel_patch_base_directory }}/ca-certificates_FingerprintSHA256_after"
+            dest: "{{ rhel_post_check_patch_evidence_dir }}/ca-certificates_FingerprintSHA256_after"
             mode: "0644"
  
         # --- 6. フィンガープリント比較 ---
@@ -191,7 +191,7 @@
               - -trustcacerts
               - -noprompt
               - -file
-              - "{{ rhel_patch_base_directory }}/e-ninshoca.crt"
+              - "{{ rhel_post_check_patch_evidence_dir }}/e-ninshoca.crt"
               - -alias
               - "{{ rhel_post_check_ca_cert_import_alias }}"
               - -keystore
@@ -220,7 +220,7 @@
         - name: "Save SHA256 fingerprint after reimport to evidence file"
           ansible.builtin.copy:
             content: "{{ __rhel_post_check_ca_fingerprint_restored }}\n"
-            dest: "{{ rhel_patch_base_directory }}/ca-certificates_FingerprintSHA256_restored"
+            dest: "{{ rhel_post_check_patch_evidence_dir }}/ca-certificates_FingerprintSHA256_restored"
             mode: "0644"
  
         # --- 9. フィンガープリント比較（不一致でも異常終了せず後続処理を実施） ---

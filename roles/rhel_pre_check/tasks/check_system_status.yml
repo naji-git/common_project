@@ -9,7 +9,7 @@
 - name: "Save process status result to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_process_status['stdout'] }}\n"
-    dest: "{{ rhel_patch_base_directory }}/process_status_before"
+    dest: "{{ rhel_pre_check_patch_evidence_dir }}/process_status_before"
     mode: "0644"
  
 # 稼働中カーネルのリリースタグを取得するため command を使用
@@ -21,7 +21,7 @@
 - name: "Save kernel version result to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_kernel_version['stdout'] }}\n"
-    dest: "{{ rhel_patch_base_directory }}/kernel_version_before"
+    dest: "{{ rhel_pre_check_patch_evidence_dir }}/kernel_version_before"
     mode: "0644"
  
 # systemd ユニット一覧の取得と正規表現による除外フィルタ処理をパイプで行うため shell を使用
@@ -34,7 +34,7 @@
 - name: "Save systemd unit files result to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_pre_check_unit_files['stdout'] }}\n"
-    dest: "{{ rhel_patch_base_directory }}/unit-files_before"
+    dest: "{{ rhel_pre_check_patch_evidence_dir }}/unit-files_before"
     mode: "0644"
  
 - name: "Check if JVM directory exists"
@@ -54,6 +54,6 @@
     - name: "Save Java directory contents to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_java_info['stdout'] }}\n"
-        dest: "{{ rhel_patch_base_directory }}/java_info_before"
+        dest: "{{ rhel_pre_check_patch_evidence_dir }}/java_info_before"
         mode: "0644"
 

@@ -1,7 +1,7 @@
 ---
 - name: "Create evidence directory for post-check"
   ansible.builtin.file:
-    path: "{{ rhel_patch_base_directory }}"
+    path: "{{ rhel_post_check_patch_evidence_dir }}"
     state: directory
     mode: "0755"
  
@@ -14,7 +14,7 @@
 - name: "Save CPU usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_post_check_cpu_usage['stdout'] }}\n"
-    dest: "{{ rhel_patch_base_directory }}/cpu_usage_after"
+    dest: "{{ rhel_post_check_patch_evidence_dir }}/cpu_usage_after"
     mode: "0644"
  
 # 当日の sar メモリログ全体をエビデンス化（CPUの sar -u と粒度を統一）するため command を使用
@@ -26,7 +26,7 @@
 - name: "Save memory usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_post_check_mem_usage['stdout'] }}\n"
-    dest: "{{ rhel_patch_base_directory }}/mem_usage_after"
+    dest: "{{ rhel_post_check_patch_evidence_dir }}/mem_usage_after"
     mode: "0644"
  
 # システム全体のディスク構成・使用状況をエビデンス化するため command を使用
@@ -38,12 +38,12 @@
 - name: "Save disk usage logs to evidence file"
   ansible.builtin.copy:
     content: "{{ __rhel_post_check_disk_usage['stdout'] }}\n"
-    dest: "{{ rhel_patch_base_directory }}/disk_usage_after"
+    dest: "{{ rhel_post_check_patch_evidence_dir }}/disk_usage_after"
     mode: "0644"
  
 - name: "Check if pre-check resource usage files exist"
   ansible.builtin.stat:
-    path: "{{ rhel_patch_base_directory }}/{{ item }}"
+    path: "{{ rhel_post_check_patch_evidence_dir }}/{{ item }}"
   loop:
     - "cpu_usage_before"
     - "mem_usage_before"
@@ -53,7 +53,7 @@
 - name: "Display warning when pre-check resource usage file does not exist"
   ansible.builtin.debug:
     msg: >-
-      [WARNING] {{ item['item'] }} が存在しません ({{ rhel_patch_base_directory }}/{{ item['item'] }})。
+      [WARNING] {{ item['item'] }} が存在しません ({{ rhel_post_check_patch_evidence_dir }}/{{ item['item'] }})。
       {{ item['item'] }} に対応するリソース比較確認をスキップします。事前確認の実施有無を確認してください。
   loop: "{{ __rhel_post_check_usage_before_stats['results'] }}"
   loop_control:
@@ -70,7 +70,7 @@
         # -*- coding: utf-8 -*-
         import os
         import datetime
-        evidence_dir = "{{ rhel_patch_base_directory }}"
+        evidence_dir = "{{ rhel_post_check_patch_evidence_dir }}"
         def get_file_mtime_str(path):
             if os.path.exists(path):
                 ts = os.path.getmtime(path)

@@ -2,79 +2,77 @@
 # ============================================================================
 # 作業ディレクトリ・作業日の設定
 # ============================================================================
- 
-#パッチ作業のベースディレクトリ
+
+# パッチ作業のベースディレクトリ
 rhel_post_check_base_dir: "/home/ansible"
- 
-#パッチ作業証跡ディレクトリ
-rhel_post_check_patch_evidence_dir: "{{rhel_post_check_base_dir }}/rhel_patch"
- 
+
+# パッチ作業証跡ディレクトリ (/home/ansible/rhel_patch)
+rhel_post_check_patch_evidence_dir: "{{ rhel_post_check_base_dir }}/rhel_patch"
+
 # パッチ（RPM）格納ディレクトリ（整理処理で削除する）
 # システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で指定する
 rhel_patch_rpm_directory: "/home/ansible/patch"
- 
+
 # パッチ作業証跡の退避ディレクトリ（<YYYYMMDD>）の作成先、および patch_mythos* の検索先
-# rhel_patch_base_directory の親ディレクトリ（末尾のスラッシュは除いて算出する）。ロール内部の判定用のため、通常は上書きしない
-__rhel_post_check_work_parent_dir: >-
-  {{ rhel_post_check_base_dir | regex_replace('/+$', '') | dirname }}
- 
+# /home/ansible 配下に作成・検索するため dirname を外し、ベースディレクトリそのものを指定
+__rhel_post_check_work_parent_dir: "{{ rhel_post_check_base_dir }}"
+
 # 作業日（退避ディレクトリ名 <YYYYMMDD> に使用）
 # 既定では実行日を YYYYMMDD 形式で取得する。固定したい場合は個別プロジェクトの group_vars で指定する
 rhel_post_check_patch_work_day: >-
   {{ ansible_facts['date_time']['date'] | replace('-', '') }}
- 
+
 # ============================================================================
 # ca-certificates（e-ninsho CA）復旧の設定
 # ============================================================================
- 
+
 # Java の cacerts のパスワード（Java 標準の既定値）
 rhel_post_check_ca_cert_keystore_password: "changeit"
- 
+
 # 再インポート時に付与するエイリアス名
 #rhel_post_check_ca_cert_import_alias: "e-ninshoca"
 # ============================================================================
 # ServerProtect for Linux カーネルフックモジュール差し替えの設定
 # ============================================================================
- 
+
 # 運用者が事前に資材アーカイブを配置しているディレクトリ
 rhel_post_check_splx_source_dir: "/tmp"
- 
+
 # ServerProtect カーネルモジュールの作業先ディレクトリ
 rhel_post_check_splx_dir: "/opt/TrendMicro/SProtectLinux/SPLX.module"
- 
+
 # 旧カーネルモジュールファイルの退避先ディレクトリ
 rhel_post_check_splx_backup_dir: "{{ rhel_post_check_splx_dir }}/old"
- 
+
 # 退避先ディレクトリのパーミッション（元の手動手順 mkdir -m 777 に合わせている）
 # 0777 は全ユーザーが読み書き実行できるため、セキュリティポリシー上問題がある場合は担当者と合意のうえ上書きする
 rhel_post_check_splx_backup_mode: "0777"
- 
+
 # splx サービス稼働確認の最大試行回数
 # /etc/init.d/splx restart は数秒で完了する想定。5回 x 10秒 = 最大50秒待機する
 rhel_post_check_splx_status_retries: 5
- 
+
 # 稼働確認の試行間隔（秒）
 rhel_post_check_splx_status_delay: 10
- 
+
 # 完了マーカーファイルのパス
 # 稼働確認に成功した後にだけ書き込み、同一アーカイブの再適用時に再展開をスキップするために使う
 # 旧 rhel_splx_kernel_module ロールで適用済みのホストでも引き継げるよう、ファイル名は旧ロールと同じにしている
 rhel_post_check_splx_marker_path: "{{ rhel_post_check_splx_dir }}/.rhel_splx_kernel_module_applied"
- 
+
 # ----------------------------------------------------------------------------
 # 任意の上書き変数（既定値のままで自動検出される）
 # ----------------------------------------------------------------------------
- 
+
 # アーカイブのファイル名
 # 既定では source_dir 内の splx_kernel_module-*.tar.gz が1件だけの場合に自動使用する
 # 複数存在する場合やファイル名がパターンと異なる場合は明示する
 rhel_post_check_splx_archive: ""
- 
+
 # アーカイブ展開後に存在すべきファイル名のリスト（作業先ディレクトリからの相対パス）
 # 既定ではアーカイブの内容（tar --list）から自動検出する
 rhel_post_check_splx_expected_files: []
- 
+
 # 退避する旧モジュールファイル名のリスト（作業先ディレクトリからの相対パス）
 # 既定では「作業先ディレクトリの既存ファイル」から「新アーカイブ」と「展開されるファイル」を除いたものを自動検出する
 rhel_post_check_splx_old_files: []
-

@@ -25,7 +25,7 @@
 # ==================================================
 - name: "Find patch_mythos directories or files"
   ansible.builtin.find:
-    paths: "{{ __rhel_post_check_patch_base_dir }}"
+    paths: "{{ __rhel_post_check_work_parent_dir }}"
     patterns: "patch_mythos*"
     file_type: any
   register: __rhel_post_check_mythos_targets
@@ -43,7 +43,7 @@
  
 - name: "Archive and cleanup rhel_post_check_patch_evidence_dir directory"
   vars:
-    __rhel_post_check_archive_dir: "{{ __rhel_post_check_patch_base_dir }}/{{ rhel_post_check_patch_work_day }}"
+    __rhel_post_check_archive_dir: "{{ __rhel_post_check_work_parent_dir }}/{{ rhel_post_check_patch_work_day }}"
   when: __rhel_post_check_rhel_patch_stat['stat']['exists'] | bool
   block:
  
@@ -83,7 +83,7 @@
 # 退避ディレクトリ名は既存の YYYY_MM_old と新規の YYYYMMDD が混在する（YYYYMMDD へ統一する移行期間のため）
 - name: "Find existing archive directories"
   ansible.builtin.find:
-    paths: "{{ __rhel_post_check_patch_base_dir }}"
+    paths: "{{ __rhel_post_check_work_parent_dir }}"
     file_type: directory
     patterns: "^([0-9]{4}_[0-9]{2}_old|[0-9]{8})$"
     use_regex: true

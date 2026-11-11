@@ -16,7 +16,7 @@ rhel_patch_rpm_directory: "/home/ansible/patch"
 # パッチ作業証跡の退避ディレクトリ（<YYYYMMDD>）の作成先、および patch_mythos* の検索先
 # rhel_patch_base_directory の親ディレクトリ（末尾のスラッシュは除いて算出する）。ロール内部の判定用のため、通常は上書きしない
 __rhel_post_check_work_parent_dir: >-
-  {{ rhel_patch_base_directory | regex_replace('/+$', '') | dirname }}
+  {{ rhel_post_check_base_dir | regex_replace('/+$', '') | dirname }}
  
 # 作業日（退避ディレクトリ名 <YYYYMMDD> に使用）
 # 既定では実行日を YYYYMMDD 形式で取得する。固定したい場合は個別プロジェクトの group_vars で指定する

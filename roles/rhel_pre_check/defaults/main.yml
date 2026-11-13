@@ -21,7 +21,7 @@ rhel_pre_check_patch_evidence_dir: "/home/ansible/rhel_patch"
 # ============================================================================
  
 # Java の cacerts から退避対象を探すエイリアスの検索パターン（大文字小文字を区別しない）
-rhel_pre_check_ca_cert_alias_pattern: "ninsho"
+rhel_pre_check_ca_cert_alias_pattern: "ninsho" 
  
 # Java の cacerts のパスワード（Java 標準の既定値）
 rhel_pre_check_ca_cert_keystore_password: "changeit"

@@ -7,14 +7,8 @@
 - name: "Include post-patch system status check tasks"
   ansible.builtin.include_tasks: check_system_status.yml
  
-- name: "Include post-patch package information collection tasks"
-  ansible.builtin.include_tasks: check_package_info.yml
- 
 - name: "Include ca-certificates restore tasks"
   ansible.builtin.include_tasks: restore_ca_certificates_conf.yml
- 
-- name: "Include httpd configuration restore tasks"
-  ansible.builtin.include_tasks: restore_httpd_conf.yml
  
 - name: "Include PostgreSQL symlink restore tasks"
   ansible.builtin.include_tasks: restore_postgresql_link.yml

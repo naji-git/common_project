@@ -1,0 +1,12 @@
+---
+# roles/rhel_pre_reboot_recovery/tasks/main.yml
+ 
+- name: "Include patch apply result check tasks"
+  ansible.builtin.include_tasks: check_patch_apply_result.yml
+ 
+- name: "Include post-patch package information collection tasks"
+  ansible.builtin.include_tasks: check_package_info.yml
+ 
+- name: "Include httpd configuration restore tasks"
+  ansible.builtin.include_tasks: restore_httpd_conf.yml
+

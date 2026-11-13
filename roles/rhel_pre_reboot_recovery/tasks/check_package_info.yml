@@ -6,13 +6,13 @@
 - name: "Retrieve sorted list of installed RPM packages after patch"
   ansible.builtin.shell: >-
     rpm -qa | sort -n
-  register: __rhel_post_check_rpm_qa_result
+  register: __rhel_pre_reboot_recovery_rpm_qa_result
   changed_when: false
  
 - name: "Save RPM package list to evidence file"
   ansible.builtin.copy:
-    content: "{{ __rhel_post_check_rpm_qa_result['stdout'] }}\n"
-    dest: "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_after"
+    content: "{{ __rhel_pre_reboot_recovery_rpm_qa_result['stdout'] }}\n"
+    dest: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/rpm_qa_after"
     mode: "0644"
  
 # --------------------------------------------------
@@ -20,49 +20,49 @@
 # --------------------------------------------------
 - name: "Check if pre-check RPM package list exists"
   ansible.builtin.stat:
-    path: "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_before"
-  register: __rhel_post_check_rpm_qa_before_stat
+    path: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/rpm_qa_before"
+  register: __rhel_pre_reboot_recovery_rpm_qa_before_stat
  
 - name: "Compare pre and post patch RPM package lists"
-  when: __rhel_post_check_rpm_qa_before_stat['stat']['exists'] | bool
+  when: __rhel_pre_reboot_recovery_rpm_qa_before_stat['stat']['exists'] | bool
   block:
  
     # 事前事後エビデンスの diff 結果から変更対象行のみをパイプと正規表現で抽出するため shell を使用
     - name: "Extract changed lines between pre and post patch RPM package lists"
       ansible.builtin.shell: >-
-        diff -u "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_before" "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_after" | grep -E '^[+-][^+-]'; exit ${PIPESTATUS[0]}
+        diff -u "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/rpm_qa_before" "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/rpm_qa_after" | grep -E '^[+-][^+-]'; exit ${PIPESTATUS[0]}
       args:
         executable: /bin/bash
-      register: __rhel_post_check_rpm_qa_diff
+      register: __rhel_pre_reboot_recovery_rpm_qa_diff
       changed_when: false
-      failed_when: __rhel_post_check_rpm_qa_diff['rc'] not in [0, 1]
+      failed_when: __rhel_pre_reboot_recovery_rpm_qa_diff['rc'] not in [0, 1]
  
     - name: "Save RPM package diff to evidence file"
       ansible.builtin.copy:
-        content: "{{ __rhel_post_check_rpm_qa_diff['stdout'] }}\n"
-        dest: "{{ rhel_post_check_patch_evidence_dir }}/rpm_qa_diff"
+        content: "{{ __rhel_pre_reboot_recovery_rpm_qa_diff['stdout'] }}\n"
+        dest: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/rpm_qa_diff"
         mode: "0644"
  
     - name: "Display RPM package differences"
       ansible.builtin.debug:
         msg:
           - "==================== [更新されたパッケージ] ===================="
-          - "{{ '差分なし (パッケージ変更はありません)' if (__rhel_post_check_rpm_qa_diff['stdout'] | trim | length == 0) else __rhel_post_check_rpm_qa_diff['stdout_lines'] }}"
+          - "{{ '差分なし (パッケージ変更はありません)' if (__rhel_pre_reboot_recovery_rpm_qa_diff['stdout'] | trim | length == 0) else __rhel_pre_reboot_recovery_rpm_qa_diff['stdout_lines'] }}"
           - "================================================================"
  
 - name: "Display skip message when pre-check RPM package list does not exist"
   ansible.builtin.debug:
-    msg: "[WARNING] rpm_qa_before が存在しません ({{ rhel_post_check_patch_evidence_dir }}/rpm_qa_before)。パッケージ差分の比較をスキップします。事前確認の実施有無を確認してください。"
-  when: not (__rhel_post_check_rpm_qa_before_stat['stat']['exists'] | bool)
+    msg: "[WARNING] rpm_qa_before が存在しません ({{ rhel_pre_reboot_recovery_patch_evidence_dir }}/rpm_qa_before)。パッケージ差分の比較をスキップします。事前確認の実施有無を確認してください。"
+  when: not (__rhel_pre_reboot_recovery_rpm_qa_before_stat['stat']['exists'] | bool)
  
 # --------------------------------------------------
 # 3. yumリポジトリ参照設定戻し
 # --------------------------------------------------
 - name: "Find backup repo files in evidence directory"
   ansible.builtin.find:
-    paths: "{{ rhel_post_check_patch_evidence_dir }}"
+    paths: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}"
     patterns: "*.repo_before"
-  register: __rhel_post_check_backup_repo_files
+  register: __rhel_pre_reboot_recovery_backup_repo_files
  
 - name: "Restore repo files from backup"
   ansible.builtin.copy:
@@ -71,6 +71,6 @@
     remote_src: true
     mode: "0644"
   become: true
-  loop: "{{ __rhel_post_check_backup_repo_files['files'] }}"
-  when: __rhel_post_check_backup_repo_files['matched'] > 0
+  loop: "{{ __rhel_pre_reboot_recovery_backup_repo_files['files'] }}"
+  when: __rhel_pre_reboot_recovery_backup_repo_files['matched'] > 0
 

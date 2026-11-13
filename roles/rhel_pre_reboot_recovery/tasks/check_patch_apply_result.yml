@@ -1,0 +1,67 @@
+---
+# ==================================================
+# 1. パッチ適用ログ確認
+# ==================================================
+- name: "Check if patch apply log file exists"
+  ansible.builtin.stat:
+    path: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/security_update.log"
+  register: __rhel_pre_reboot_recovery_patch_log_stat
+ 
+- name: "Assert patch apply log file exists"
+  ansible.builtin.assert:
+    that:
+      - __rhel_pre_reboot_recovery_patch_log_stat['stat']['exists'] | bool
+    fail_msg: >-
+      [ERROR] パッチ適用ログ ({{ rhel_pre_reboot_recovery_patch_evidence_dir }}/security_update.log) が存在しません。
+      パッチ適用（rhel_update_patch）が実行されたか、ログの出力先を確認してください。
+    quiet: true
+ 
+- name: "Read patch apply log file"
+  ansible.builtin.slurp:
+    src: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/security_update.log"
+  register: __rhel_pre_reboot_recovery_patch_log_content
+ 
+- name: "Assert patch apply log contains the completion message"
+  ansible.builtin.assert:
+    that:
+      - "'Complete!' in (__rhel_pre_reboot_recovery_patch_log_content['content'] | b64decode)"
+    fail_msg: >-
+      [ERROR] パッチ適用ログ ({{ rhel_pre_reboot_recovery_patch_evidence_dir }}/security_update.log) に Complete! の記載がありません。
+      パッチ適用が正常に完了していない可能性があります。ログの内容を確認し、問題を解消してから再実行してください。
+    success_msg: "[OK] パッチ適用ログに Complete! の記載があることを確認しました。"
+ 
+# ==================================================
+# 2. SAM監視ログ確認
+# ==================================================
+- name: "Set today date formatted variable"
+  ansible.builtin.set_fact:
+    __rhel_pre_reboot_recovery_today_compact: "{{ ansible_facts['date_time']['date'] | replace('-', '') }}"
+ 
+- name: "Check if today SAM filtered log file exists"
+  ansible.builtin.stat:
+    path: "/usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_pre_reboot_recovery_today_compact }}.log"
+  become: true
+  register: __rhel_pre_reboot_recovery_sam_log_stat
+ 
+- name: "Display SAM monitoring filtered log content"
+  when: __rhel_pre_reboot_recovery_sam_log_stat['stat']['exists'] | bool
+  block:
+ 
+    # フィルタログの内容を標準出力に取得・表示するため command を使用
+    - name: "Cat SAM filtered log file"
+      ansible.builtin.command: "cat /usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_pre_reboot_recovery_today_compact }}.log"
+      become: true
+      register: __rhel_pre_reboot_recovery_sam_log_content
+      changed_when: false
+ 
+    - name: "Display SAM log content"
+      ansible.builtin.debug:
+        msg:
+          - "=== SAM Filtered Log (/usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_pre_reboot_recovery_today_compact }}.log) ==="
+          - "{{ __rhel_pre_reboot_recovery_sam_log_content['stdout_lines'] if (__rhel_pre_reboot_recovery_sam_log_content['stdout'] | trim | length > 0) else ['(ログファイルは空です)'] }}"
+ 
+- name: "Display message if SAM filtered log file does not exist"
+  ansible.builtin.debug:
+    msg: "[WARNING] SAM監視ログファイルが存在しません (/usr/local/sam/kanshi/log/filtered/msg_filtered_{{ __rhel_pre_reboot_recovery_today_compact }}.log)。ファイルの存在有無を確認してください。"
+  when: not (__rhel_pre_reboot_recovery_sam_log_stat['stat']['exists'] | bool)
+

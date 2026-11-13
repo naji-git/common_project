@@ -1,0 +1,10 @@
+---
+# ============================================================================
+# 作業ディレクトリ・作業日の設定
+# ============================================================================
+# パッチ作業のベースディレクトリ
+rhel_pre_reboot_recovery_base_dir: "/home/ansible"
+ 
+# パッチ作業証跡ディレクトリ (/home/ansible/rhel_patch)
+rhel_pre_reboot_recovery_patch_evidence_dir: "{{ rhel_pre_reboot_recovery_base_dir }}/rhel_patch"
+

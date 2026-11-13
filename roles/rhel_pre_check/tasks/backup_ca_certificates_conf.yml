@@ -164,12 +164,27 @@
               register: __rhel_pre_check_ca_export_rfc_results
               changed_when: false
 
+            - name: "Assert PEM certificate blocks are extracted from keytool output"
+              ansible.builtin.assert:
+                that:
+                  - >-
+                    (item['stdout']
+                     | regex_findall('-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----')
+                     | length) > 0
+                fail_msg: >-
+                  [ERROR] エイリアス {{ item['item'][0] }} の PEM 証明書ブロックを取得できませんでした。
+                  keytool -list -rfc -alias {{ item['item'][0] }} の出力を確認してください。
+                quiet: true
+              loop: "{{ __rhel_pre_check_ca_export_rfc_results['results'] }}"
+              loop_control:
+                label: "{{ item['item'][0] }}"
+
             - name: "Save extra ca-certificates to evidence directory"
               ansible.builtin.copy:
                 content: >-
-                  {{ (item['stdout']
-                      | regex_search('(?s)-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----'))
-                     ~ '\n' }}
+                  {{ ((item['stdout']
+                       | regex_findall('-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----'))
+                      | first) ~ '\n' }}
                 dest: "{{ rhel_pre_check_patch_evidence_dir }}/{{ item['item'][0] }}.crt"
                 mode: "0644"
               loop: "{{ __rhel_pre_check_ca_export_rfc_results['results'] }}"

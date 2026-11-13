@@ -91,6 +91,12 @@
           when: __rhel_pre_reboot_recovery_added_modules_files['rc'] == 1
           block:
 
+            - name: "Display message for evacuating added files in conf.modules.d"
+              ansible.builtin.debug:
+                msg: "conf.modules.d:余剰ファイル({{ item }})を退避します"
+              loop: "{{ __rhel_pre_reboot_recovery_added_modules_files['stdout_lines'] }}"
+              when: __rhel_pre_reboot_recovery_added_modules_files['stdout_lines'] | length > 0
+
             # 差分として検知された余剰ファイルを退避ディレクトリに移動するため command を使用
             - name: "Move added files in conf.modules.d to evidence directory"
               ansible.builtin.command:
@@ -167,6 +173,12 @@
         - name: "Restore conf.d when difference is detected"
           when: __rhel_pre_reboot_recovery_added_confd_files['rc'] == 1
           block:
+
+            - name: "Display message for evacuating added files in conf.d"
+              ansible.builtin.debug:
+                msg: "conf.d:余剰ファイル({{ item }})を退避します"
+              loop: "{{ __rhel_pre_reboot_recovery_added_confd_files['stdout_lines'] }}"
+              when: __rhel_pre_reboot_recovery_added_confd_files['stdout_lines'] | length > 0
 
             # 差分として検知された余剰ファイルを退避ディレクトリに移動するため command を使用
             - name: "Move added files in conf.d to evidence directory"

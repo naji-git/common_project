@@ -145,65 +145,47 @@
                   {{ rhel_pre_check_patch_evidence_dir }}/cacerts.current.detail の内容を確認してください。
                 quiet: true
 
-            # keytool -exportcert ではなく copy で冪等にファイル書き出しを行うため -rfc で PEM を取得
-            - name: "Retrieve PEM content for extra ca-certificates from current cacerts"
+            # keytool には証明書を書き出す専用モジュールが無いため command を使用（ファイルは毎回上書きされる）
+            - name: "Export extra ca-certificates to evidence directory"
               ansible.builtin.command:
                 argv:
                   - keytool
-                  - -list
-                  - -rfc
+                  - -exportcert
                   - -alias
                   - "{{ item[0] }}"
                   - -keystore
                   - "{{ __rhel_pre_check_ca_cacerts_path }}"
                   - -storepass
                   - "{{ rhel_pre_check_ca_cert_keystore_password }}"
+                  - -rfc
+                  - -file
+                  - "{{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}.crt"
               loop: "{{ __rhel_pre_check_ca_diff_entries }}"
               loop_control:
                 label: "{{ item[0] }}"
-              register: __rhel_pre_check_ca_export_rfc_results
-              changed_when: false
+              changed_when: true
 
-            - name: "Assert PEM certificate blocks are extracted from keytool output"
+            - name: "Check if exported ca-certificates files exist and are not empty"
+              ansible.builtin.stat:
+                path: "{{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}.crt"
+              loop: "{{ __rhel_pre_check_ca_diff_entries }}"
+              loop_control:
+                label: "{{ item[0] }}"
+              register: __rhel_pre_check_ca_cert_stats
+
+            - name: "Assert exported ca-certificates files exist and have content"
               ansible.builtin.assert:
                 that:
-                  - >-
-                    (item['stdout']
-                     | regex_findall('-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----')
-                     | length) > 0
+                  - item['stat']['exists'] | bool
+                  - item['stat']['size'] | int > 0
                 fail_msg: >-
-                  [ERROR] エイリアス {{ item['item'][0] }} の PEM 証明書ブロックを取得できませんでした。
-                  keytool -list -rfc -alias {{ item['item'][0] }} の出力を確認してください。
-                quiet: true
-              loop: "{{ __rhel_pre_check_ca_export_rfc_results['results'] }}"
-              loop_control:
-                label: "{{ item['item'][0] }}"
-
-            - name: "Save extra ca-certificates to evidence directory"
-              ansible.builtin.copy:
-                content: >-
-                  {{ ((item['stdout']
-                       | regex_findall('-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----'))
-                      | first) ~ '\n' }}
-                dest: "{{ rhel_pre_check_patch_evidence_dir }}/{{ item['item'][0] }}.crt"
-                mode: "0644"
-              loop: "{{ __rhel_pre_check_ca_export_rfc_results['results'] }}"
-              loop_control:
-                label: "{{ item['item'][0] }}"
-              register: __rhel_pre_check_ca_copy_results
-
-            - name: "Assert exported ca-certificates files exist"
-              ansible.builtin.assert:
-                that:
-                  - item['dest'] is defined
-                fail_msg: >-
-                  [ERROR] {{ rhel_pre_check_patch_evidence_dir }}/{{ item['item']['item'][0] }}.crt が作成されていません。
-                  {{ rhel_pre_check_patch_evidence_dir }} の書き込み権限を確認してください。
+                  [ERROR] {{ rhel_pre_check_patch_evidence_dir }}/{{ item['item'][0] }}.crt が作成されていないか空です。
+                  keytool の実行ユーザーと {{ rhel_pre_check_patch_evidence_dir }} の書き込み権限を確認してください。
                 success_msg: >-
-                  [OK] ca-certificates を {{ rhel_pre_check_patch_evidence_dir }}/{{ item['item']['item'][0] }}.crt に退避しました（エイリアス: {{ item['item']['item'][0] }}）。
-              loop: "{{ __rhel_pre_check_ca_copy_results['results'] }}"
+                  [OK] ca-certificates を {{ rhel_pre_check_patch_evidence_dir }}/{{ item['item'][0] }}.crt に退避しました（エイリアス: {{ item['item'][0] }}）。
+              loop: "{{ __rhel_pre_check_ca_cert_stats['results'] }}"
               loop_control:
-                label: "{{ item['item']['item'][0] }}"
+                label: "{{ item['item'][0] }}"
 
             # rhel_post_check は別ジョブで実行されるため、退避したエイリアス名を証跡として残す
             - name: "Save target alias names to evidence file"

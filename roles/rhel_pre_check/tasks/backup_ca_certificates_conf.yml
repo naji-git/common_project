@@ -87,14 +87,14 @@
         dest: "{{ rhel_pre_check_patch_evidence_dir }}/cacerts.default.detail"
         mode: "0644"
 
-    - name: "Extract, sort, and compare SHA-256 fingerprints between current and default cacerts"
+    - name: "Extract and compare SHA-256 fingerprints between current and default cacerts"
       vars:
         __rhel_pre_check_ca_current_sha256_lines: >-
           {{ __rhel_pre_check_ca_current_detail_out['stdout_lines'] | default([])
-             | select('search', 'SHA-256') | sort | list }}
+             | select('search', 'SHA-256') | list }}
         __rhel_pre_check_ca_default_sha256_lines: >-
           {{ __rhel_pre_check_ca_default_detail_out['stdout_lines'] | default([])
-             | select('search', 'SHA-256') | sort | list }}
+             | select('search', 'SHA-256') | list }}
         __rhel_pre_check_ca_diff_sha256_lines: >-
           {{ __rhel_pre_check_ca_current_sha256_lines
              | difference(__rhel_pre_check_ca_default_sha256_lines) }}
@@ -110,22 +110,6 @@
              | selectattr(1, 'in', __rhel_pre_check_ca_diff_fingerprints)
              | list }}
       block:
-
-        - name: "Save sorted SHA-256 fingerprints of current cacerts"
-          ansible.builtin.copy:
-            content: >-
-              {{ (__rhel_pre_check_ca_current_sha256_lines | join('\n'))
-                 ~ ('\n' if (__rhel_pre_check_ca_current_sha256_lines | length > 0) else '') }}
-            dest: "{{ rhel_pre_check_patch_evidence_dir }}/cacerts.current.sha256"
-            mode: "0644"
-
-        - name: "Save sorted SHA-256 fingerprints of OS default cacerts"
-          ansible.builtin.copy:
-            content: >-
-              {{ (__rhel_pre_check_ca_default_sha256_lines | join('\n'))
-                 ~ ('\n' if (__rhel_pre_check_ca_default_sha256_lines | length > 0) else '') }}
-            dest: "{{ rhel_pre_check_patch_evidence_dir }}/cacerts.default.sha256"
-            mode: "0644"
 
         - name: "Display skip message when no extra ca-certificates exist in current cacerts"
           ansible.builtin.debug:
@@ -159,7 +143,7 @@
                   - "{{ rhel_pre_check_ca_cert_keystore_password }}"
                   - -rfc
                   - -file
-                  - "{{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}.crt"
+                  - "{{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}_before.crt"
               loop: "{{ __rhel_pre_check_ca_diff_entries }}"
               loop_control:
                 label: "{{ item[0] }}"
@@ -167,7 +151,7 @@
 
             - name: "Check if exported ca-certificates files exist and are not empty"
               ansible.builtin.stat:
-                path: "{{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}.crt"
+                path: "{{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}_before.crt"
               loop: "{{ __rhel_pre_check_ca_diff_entries }}"
               loop_control:
                 label: "{{ item[0] }}"
@@ -179,10 +163,10 @@
                   - item['stat']['exists'] | bool
                   - item['stat']['size'] | int > 0
                 fail_msg: >-
-                  [ERROR] {{ rhel_pre_check_patch_evidence_dir }}/{{ item['item'][0] }}.crt が作成されていないか空です。
+                  [ERROR] {{ rhel_pre_check_patch_evidence_dir }}/{{ item['item'][0] }}_before.crt が作成されていないか空です。
                   keytool の実行ユーザーと {{ rhel_pre_check_patch_evidence_dir }} の書き込み権限を確認してください。
                 success_msg: >-
-                  [OK] ca-certificates を {{ rhel_pre_check_patch_evidence_dir }}/{{ item['item'][0] }}.crt に退避しました（エイリアス: {{ item['item'][0] }}）。
+                  [OK] ca-certificates を {{ rhel_pre_check_patch_evidence_dir }}/{{ item['item'][0] }}_before.crt に退避しました（エイリアス: {{ item['item'][0] }}）。
               loop: "{{ __rhel_pre_check_ca_cert_stats['results'] }}"
               loop_control:
                 label: "{{ item['item'][0] }}"

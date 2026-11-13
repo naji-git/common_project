@@ -52,6 +52,10 @@
                | regex_findall('(?m)^([^,\r\n]+),[^\r\n]+\r?\n[^\r\n]*SHA-256[^0-9A-Fa-f]*([0-9A-Fa-f:]+)')
                | map('map', 'lower') | list
              ) }}
+        __rhel_post_check_ca_matched_aliases: >-
+          {{ __rhel_post_check_ca_target_aliases
+             | select('in', __rhel_post_check_ca_current_alias_fp_map.keys() | list)
+             | list }}
       block:
 
         # command -v によるコマンド置換と readlink -f を1回で実行するため shell を使用
@@ -144,94 +148,105 @@
             - item | lower in __rhel_post_check_ca_current_alias_fp_map
             - (__rhel_post_check_ca_before_alias_fp_map[item | lower] | default('')) == (__rhel_post_check_ca_current_alias_fp_map[item | lower] | default(''))
 
-        # keytool による証明書削除には専用モジュールが無いため command を使用
-        - name: "Delete stale ca-certificates alias before reimport when fingerprint differs"
-          ansible.builtin.command:
-            argv:
-              - keytool
-              - -delete
-              - -alias
-              - "{{ item }}"
-              - -keystore
-              - "{{ __rhel_post_check_ca_cacerts_path }}"
-              - -storepass
-              - "{{ __rhel_post_check_ca_keystore_password }}"
-          loop: "{{ __rhel_post_check_ca_target_aliases }}"
-          loop_control:
-            label: "{{ item }}"
-          become: true
-          changed_when: true
-          when:
-            - item | lower in __rhel_post_check_ca_current_alias_fp_map
-            - (__rhel_post_check_ca_before_alias_fp_map[item | lower] | default('')) != (__rhel_post_check_ca_current_alias_fp_map[item | lower] | default(''))
-
-        # keytool による証明書インポートには専用モジュールが無いため command を使用
-        - name: "Import ca-certificates into Java cacerts keystore"
-          ansible.builtin.command:
-            argv:
-              - keytool
-              - -importcert
-              - -trustcacerts
-              - -noprompt
-              - -file
-              - "{{ rhel_post_check_patch_evidence_dir }}/{{ item }}_before.crt"
-              - -alias
-              - "{{ item }}"
-              - -keystore
-              - "{{ __rhel_post_check_ca_cacerts_path }}"
-              - -storepass
-              - "{{ __rhel_post_check_ca_keystore_password }}"
-          loop: "{{ __rhel_post_check_ca_target_aliases }}"
-          loop_control:
-            label: "{{ item }}"
-          become: true
-          changed_when: true
-          when: >-
-            (item | lower not in __rhel_post_check_ca_current_alias_fp_map)
-            or ((__rhel_post_check_ca_before_alias_fp_map[item | lower] | default('')) != (__rhel_post_check_ca_current_alias_fp_map[item | lower] | default('')))
-
-        # keytool による証明書一覧取得には専用モジュールが無いため command を使用
-        - name: "List certificates in Java cacerts keystore after restore"
-          ansible.builtin.command:
-            argv:
-              - keytool
-              - -list
-              - -keystore
-              - "{{ __rhel_post_check_ca_cacerts_path }}"
-              - -storepass
-              - "{{ __rhel_post_check_ca_keystore_password }}"
-          register: __rhel_post_check_ca_keystore_list_after
-          changed_when: false
-
-        - name: "Assert all target ca-certificates aliases exist in cacerts"
-          ansible.builtin.assert:
-            that:
-              - >-
-                __rhel_post_check_ca_keystore_list_after['stdout_lines']
-                | select('search', '(?i)^' ~ (item | regex_escape) ~ ',')
-                | list | length > 0
-            fail_msg: >-
-              [ERROR] リストア後の cacerts にエイリアス {{ item }} が見つかりません。
-              keytool -list で cacerts の内容を確認し、{{ rhel_post_check_patch_evidence_dir }}/{{ item }}_before.crt を手動でインポートしてください。
-            success_msg: "[OK] ca-certificates（{{ item }}）が cacerts に存在することを確認しました。"
-          loop: "{{ __rhel_post_check_ca_target_aliases }}"
-          loop_control:
-            label: "{{ item }}"
-
-        - name: "Verify SHA256 fingerprints of restored ca-certificates match pre-patch state"
+        - name: "Reimport and verify only ca-certificates aliases that require restoration"
           vars:
-            __rhel_post_check_ca_after_alias_fp_map: >-
-              {{ dict(
-                   __rhel_post_check_ca_keystore_list_after['stdout']
-                   | regex_findall('(?m)^([^,\r\n]+),[^\r\n]+\r?\n[^\r\n]*SHA-256[^0-9A-Fa-f]*([0-9A-Fa-f:]+)')
-                   | map('map', 'lower') | list
-                 ) }}
-          ansible.builtin.debug:
-            msg: >-
-              {{ '[OK] エイリアス ' ~ item ~ ' の SHA256 フィンガープリントがパッチ適用前と一致しています。'
-                 if (__rhel_post_check_ca_after_alias_fp_map[item | lower] | default('')) == (__rhel_post_check_ca_before_alias_fp_map[item | lower] | default(''))
-                 else '[ERROR] エイリアス ' ~ item ~ ' の SHA256 フィンガープリントがパッチ適用前と一致していないため、サーバのca-certificatesの状態確認をお願いします。' }}
-          loop: "{{ __rhel_post_check_ca_target_aliases }}"
-          loop_control:
-            label: "{{ item }}"
-          when: __rhel_post_check_ca_before_alias_fp_map | length > 0
+            __rhel_post_check_ca_unchanged_aliases: >-
+              {%- set matched = [] -%}
+              {%- for alias in __rhel_post_check_ca_target_aliases -%}
+                {%- if (alias | lower in __rhel_post_check_ca_current_alias_fp_map)
+                       and ((__rhel_post_check_ca_before_alias_fp_map[alias | lower] | default('')) == (__rhel_post_check_ca_current_alias_fp_map[alias | lower] | default(''))) -%}
+                  {%- set _ = matched.append(alias) -%}
+                {%- endif -%}
+              {%- endfor -%}
+              {{ matched }}
+            __rhel_post_check_ca_reimport_aliases: >-
+              {{ __rhel_post_check_ca_target_aliases | difference(__rhel_post_check_ca_unchanged_aliases) }}
+          when: __rhel_post_check_ca_reimport_aliases | length > 0
+          block:
+
+            # keytool による証明書削除には専用モジュールが無いため command を使用
+            - name: "Delete stale ca-certificates alias before reimport when fingerprint differs"
+              ansible.builtin.command:
+                argv:
+                  - keytool
+                  - -delete
+                  - -alias
+                  - "{{ item }}"
+                  - -keystore
+                  - "{{ __rhel_post_check_ca_cacerts_path }}"
+                  - -storepass
+                  - "{{ __rhel_post_check_ca_keystore_password }}"
+              loop: "{{ __rhel_post_check_ca_reimport_aliases }}"
+              loop_control:
+                label: "{{ item }}"
+              become: true
+              changed_when: true
+              when: item | lower in __rhel_post_check_ca_current_alias_fp_map
+
+            # keytool による証明書インポートには専用モジュールが無いため command を使用
+            - name: "Import ca-certificates into Java cacerts keystore"
+              ansible.builtin.command:
+                argv:
+                  - keytool
+                  - -importcert
+                  - -trustcacerts
+                  - -noprompt
+                  - -file
+                  - "{{ rhel_post_check_patch_evidence_dir }}/{{ item }}_before.crt"
+                  - -alias
+                  - "{{ item }}"
+                  - -keystore
+                  - "{{ __rhel_post_check_ca_cacerts_path }}"
+                  - -storepass
+                  - "{{ __rhel_post_check_ca_keystore_password }}"
+              loop: "{{ __rhel_post_check_ca_reimport_aliases }}"
+              loop_control:
+                label: "{{ item }}"
+              become: true
+              changed_when: true
+
+            # keytool による証明書一覧取得には専用モジュールが無いため command を使用
+            - name: "List certificates in Java cacerts keystore after restore"
+              ansible.builtin.command:
+                argv:
+                  - keytool
+                  - -list
+                  - -keystore
+                  - "{{ __rhel_post_check_ca_cacerts_path }}"
+                  - -storepass
+                  - "{{ __rhel_post_check_ca_keystore_password }}"
+              register: __rhel_post_check_ca_keystore_list_after
+              changed_when: false
+
+            - name: "Assert reimported ca-certificates aliases exist in cacerts"
+              ansible.builtin.assert:
+                that:
+                  - >-
+                    __rhel_post_check_ca_keystore_list_after['stdout_lines']
+                    | select('search', '(?i)^' ~ (item | regex_escape) ~ ',')
+                    | list | length > 0
+                fail_msg: >-
+                  [ERROR] リストア後の cacerts にエイリアス {{ item }} が見つかりません。
+                  keytool -list で cacerts の内容を確認し、{{ rhel_post_check_patch_evidence_dir }}/{{ item }}_before.crt を手動でインポートしてください。
+                success_msg: "[OK] ca-certificates（{{ item }}）が cacerts に存在することを確認しました。"
+              loop: "{{ __rhel_post_check_ca_reimport_aliases }}"
+              loop_control:
+                label: "{{ item }}"
+
+            - name: "Verify SHA256 fingerprints of reimported ca-certificates match pre-patch state"
+              vars:
+                __rhel_post_check_ca_after_alias_fp_map: >-
+                  {{ dict(
+                       __rhel_post_check_ca_keystore_list_after['stdout']
+                       | regex_findall('(?m)^([^,\r\n]+),[^\r\n]+\r?\n[^\r\n]*SHA-256[^0-9A-Fa-f]*([0-9A-Fa-f:]+)')
+                       | map('map', 'lower') | list
+                     ) }}
+              ansible.builtin.debug:
+                msg: >-
+                  {{ '[OK] エイリアス ' ~ item ~ ' の SHA256 フィンガープリントがパッチ適用前と一致しています。'
+                     if (__rhel_post_check_ca_after_alias_fp_map[item | lower] | default('')) == (__rhel_post_check_ca_before_alias_fp_map[item | lower] | default(''))
+                     else '[ERROR] エイリアス ' ~ item ~ ' の SHA256 フィンガープリントがパッチ適用前と一致していないため、サーバのca-certificatesの状態確認をお願いします。' }}
+              loop: "{{ __rhel_post_check_ca_reimport_aliases }}"
+              loop_control:
+                label: "{{ item }}"
+              when: __rhel_post_check_ca_before_alias_fp_map | length > 0

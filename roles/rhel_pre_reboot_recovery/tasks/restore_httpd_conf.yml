@@ -103,11 +103,18 @@
               when: __rhel_pre_reboot_recovery_added_modules_files['stdout_lines'] | length > 0
               changed_when: true
 
-            # 余剰ファイル移動後のディレクトリ状態を再取得・保存するためリダイレクトを含む shell を使用
+            # 余剰ファイル移動後のディレクトリ状態を再取得するため shell を使用
             - name: "Rescan files in conf.modules.d after cleanup"
               ansible.builtin.shell: >-
-                ls -1 /etc/httpd/conf.modules.d > "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_after_mv"
+                ls -1 /etc/httpd/conf.modules.d
+              register: __rhel_pre_reboot_recovery_conf_modules_after_mv_list
               changed_when: false
+
+            - name: "Save rescanned conf.modules.d file list to evidence file"
+              ansible.builtin.copy:
+                content: "{{ __rhel_pre_reboot_recovery_conf_modules_after_mv_list['stdout'] }}\n"
+                dest: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_after_mv"
+                mode: "0644"
 
             # 移動後状態と事前エビデンスの差分を取得するため shell を使用
             - name: "Check diff of conf.modules.d against pre-patch state"
@@ -173,11 +180,18 @@
               when: __rhel_pre_reboot_recovery_added_confd_files['stdout_lines'] | length > 0
               changed_when: true
 
-            # 余剰ファイル移動後のディレクトリ状態を再取得・保存するためリダイレクトを含む shell を使用
+            # 余剰ファイル移動後のディレクトリ状態を再取得するため shell を使用
             - name: "Rescan files in conf.d after cleanup"
               ansible.builtin.shell: >-
-                ls -1 /etc/httpd/conf.d > "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_after_mv"
+                ls -1 /etc/httpd/conf.d
+              register: __rhel_pre_reboot_recovery_conf_d_after_mv_list
               changed_when: false
+
+            - name: "Save rescanned conf.d file list to evidence file"
+              ansible.builtin.copy:
+                content: "{{ __rhel_pre_reboot_recovery_conf_d_after_mv_list['stdout'] }}\n"
+                dest: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_after_mv"
+                mode: "0644"
 
             # 移動後状態と事前エビデンスの差分を取得するため shell を使用
             - name: "Check diff of conf.d against pre-patch state"

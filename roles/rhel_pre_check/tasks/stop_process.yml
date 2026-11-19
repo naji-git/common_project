@@ -29,7 +29,7 @@
           - >-
             {{ __rhel_pre_check_sam_log_text.splitlines()
                 if (__rhel_pre_check_sam_log_text | trim | length > 0)
-                else ['(当日分のSAM監視ログファイルが存在しません)'] }}
+                else ['(当日分のSAM監視ログファイルが空です )'] }}
       when: __rhel_pre_check_sam_log_stat['stat']['exists'] | bool
  
     - name: "Create SAM filtered log file when it does not exist"
@@ -52,91 +52,7 @@
       when: not (__rhel_pre_check_sam_log_stat['stat']['exists'] | bool)
  
 # ==================================================
-# 1. httpd/jboss サービスの停止
-# ==================================================
-# --------------------------------------------------
-# 1-1. 開発環境: httpd/jboss サービスの停止
-# --------------------------------------------------
-- name: Save states of and stop httpd/jboss services (development environment only)
-  when: is_develop_env | default(false) | bool
-  block:
-    - name: Gather service facts
-      ansible.builtin.service_facts:
- 
-    - name: Initialize list of running httpd services
-      ansible.builtin.set_fact:
-        __rhel_pre_check_httpd_running_services: []
- 
-    - name: Add running httpd services to list
-      ansible.builtin.set_fact:
-        __rhel_pre_check_httpd_running_services: "{{ __rhel_pre_check_httpd_running_services + [item] }}"
-      loop: "{{ rhel_pre_check_httpd_services | default([]) }}"
-      when:
-        - ansible_facts['services'][item ~ '.service'] is defined
-        - ansible_facts['services'][item ~ '.service']['state'] == 'running'
- 
-    - name: Create directory for service state files
-      ansible.builtin.file:
-        path: "{{ rhel_pre_check_patch_evidence_dir }}"
-        state: directory
-        mode: "0755"
-      become: true
- 
-    - name: Save list of running httpd services
-      ansible.builtin.copy:
-        content: "{{ __rhel_pre_check_httpd_running_services | to_nice_json }}"
-        dest: "{{ rhel_pre_check_patch_evidence_dir }}/httpd_running_services_pre_check.json"
-        mode: "0644"
-      become: true
- 
-    - name: Stop running httpd services
-      ansible.builtin.systemd:
-        name: "{{ item }}"
-        state: stopped
-      become: true
-      loop: "{{ __rhel_pre_check_httpd_running_services | default([]) }}"
- 
-    - name: Initialize list of running jboss services
-      ansible.builtin.set_fact:
-        __rhel_pre_check_jboss_running_services: []
- 
-    - name: Add running jboss services to list
-      ansible.builtin.set_fact:
-        __rhel_pre_check_jboss_running_services: "{{ __rhel_pre_check_jboss_running_services + [item] }}"
-      loop: "{{ rhel_pre_check_jboss_services | default([]) }}"
-      when:
-        - ansible_facts['services'][item ~ '.service'] is defined
-        - ansible_facts['services'][item ~ '.service']['state'] == 'running'
- 
-    - name: Save list of running jboss services
-      ansible.builtin.copy:
-        content: "{{ __rhel_pre_check_jboss_running_services | to_nice_json }}"
-        dest: "{{ rhel_pre_check_patch_evidence_dir }}/jboss_running_services_pre_check.json"
-        mode: "0644"
-      become: true
- 
-    - name: Stop running jboss services
-      ansible.builtin.systemd:
-        name: "{{ item }}"
-        state: stopped
-      become: true
-      loop: "{{ __rhel_pre_check_jboss_running_services | default([]) }}"
- 
-# --------------------------------------------------
-# 1-2. プレ本・本番環境: httpd/jboss サービスの停止
-# --------------------------------------------------
-- name: Stop services (pre-production and production environments)
-  when: not (is_develop_env | default(false) | bool)
-  block:
-    - name: Stop services listed in rhel_pre_check_stop_services
-      ansible.builtin.systemd:
-        name: "{{ item }}"
-        state: stopped
-      become: true
-      loop: "{{ rhel_pre_check_stop_services | default([]) }}"
- 
-# ==================================================
-# 2. JP1サービスの停止
+# 1. JP1サービスの停止
 # ==================================================
 # JP1（開発・プレ本・本番の全環境で同じ手順）
 # 停止順序は JP1/AJS3 → JP1/Base のため、サービス名リストの並び順をそのまま停止順とする

@@ -168,11 +168,18 @@
                 fail_msg: >-
                   [ERROR] {{ rhel_pre_check_patch_evidence_dir }}/{{ item['item'][0] }}_before.crt が作成されていないか空です。
                   keytool の実行ユーザーと {{ rhel_pre_check_patch_evidence_dir }} の書き込み権限を確認してください。
-                success_msg: >-
-                  [OK] ca-certificates を {{ rhel_pre_check_patch_evidence_dir }}/{{ item['item'][0] }}_before.crt に退避しました（エイリアス: {{ item['item'][0] }}）。
+                quiet: true
               loop: "{{ __rhel_pre_check_ca_cert_stats['results'] }}"
               loop_control:
                 label: "{{ item['item'][0] }}"
+
+            - name: "Display message when ca-certificates is exported"
+              ansible.builtin.debug:
+                msg: >-
+                  [OK] ca-certificates を {{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}_before.crt に退避しました（エイリアス: {{ item[0] }}）。
+              loop: "{{ __rhel_pre_check_ca_diff_entries }}"
+              loop_control:
+                label: "{{ item[0] }}"
 
             # rhel_post_check は別ジョブで実行されるため、退避したエイリアス名を証跡として残す
             - name: "Save target alias names to evidence file"

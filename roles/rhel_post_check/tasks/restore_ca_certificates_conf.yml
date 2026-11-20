@@ -34,7 +34,7 @@
       vars:
         __rhel_post_check_ca_cacerts_path: >-
           {{ __rhel_post_check_ca_java_path['stdout'] | trim | dirname | dirname }}/lib/security/cacerts
-        __rhel_post_check_ca_keystore_password: >-
+        rhel_post_check_ca_keystore_password: >-
           {{ rhel_post_check_ca_cert_keystore_password | default('changeit') }}
         __rhel_post_check_ca_before_detail_text: >-
           {{ (__rhel_post_check_ca_before_detail_slurp['content'] | b64decode)
@@ -116,7 +116,7 @@
               - -keystore
               - "{{ __rhel_post_check_ca_cacerts_path }}"
               - -storepass
-              - "{{ __rhel_post_check_ca_keystore_password }}"
+              - "{{ rhel_post_check_ca_keystore_password }}"
           register: __rhel_post_check_ca_keystore_list_before
           changed_when: false
           no_log: true
@@ -180,7 +180,7 @@
                   - -keystore
                   - "{{ __rhel_post_check_ca_cacerts_path }}"
                   - -storepass
-                  - "{{ __rhel_post_check_ca_keystore_password }}"
+                  - "{{ rhel_post_check_ca_keystore_password }}"
               loop: "{{ __rhel_post_check_ca_reimport_aliases }}"
               loop_control:
                 label: "{{ item }}"
@@ -204,7 +204,7 @@
                   - -keystore
                   - "{{ __rhel_post_check_ca_cacerts_path }}"
                   - -storepass
-                  - "{{ __rhel_post_check_ca_keystore_password }}"
+                  - "{{ rhel_post_check_ca_keystore_password }}"
               loop: "{{ __rhel_post_check_ca_reimport_aliases }}"
               loop_control:
                 label: "{{ item }}"
@@ -221,7 +221,7 @@
                   - -keystore
                   - "{{ __rhel_post_check_ca_cacerts_path }}"
                   - -storepass
-                  - "{{ __rhel_post_check_ca_keystore_password }}"
+                  - "{{ rhel_post_check_ca_keystore_password }}"
               register: __rhel_post_check_ca_keystore_list_after
               changed_when: false
               no_log: true

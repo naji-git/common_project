@@ -61,6 +61,7 @@
           - "{{ rhel_pre_check_ca_cert_keystore_password }}"
       register: __rhel_pre_check_ca_current_detail_out
       changed_when: false
+      no_log: true
 
     - name: "Save current Java cacerts certificate list to evidence file"
       ansible.builtin.copy:
@@ -80,6 +81,7 @@
           - "{{ rhel_pre_check_ca_cert_keystore_password }}"
       register: __rhel_pre_check_ca_default_detail_out
       changed_when: false
+      no_log: true
 
     - name: "Save OS default cacerts certificate list to evidence file"
       ansible.builtin.copy:
@@ -148,6 +150,7 @@
               loop_control:
                 label: "{{ item[0] }}"
               changed_when: true
+              no_log: true
 
             - name: "Check if exported ca-certificates files exist and are not empty"
               ansible.builtin.stat:

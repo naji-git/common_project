@@ -8,3 +8,8 @@ rhel_pre_reboot_recovery_base_dir: "/home/ansible"
 # パッチ作業証跡ディレクトリ (/home/ansible/rhel_patch)
 rhel_pre_reboot_recovery_patch_evidence_dir: "{{ rhel_pre_reboot_recovery_base_dir }}/rhel_patch"
 
+# ============================================================================
+# httpdの利用有無の設定
+# ============================================================================
+ 
+rhel_pre_reboot_recovery_httpd_in_use: "{{ httpd_in_use }}"

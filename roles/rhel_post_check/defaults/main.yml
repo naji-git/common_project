@@ -25,7 +25,7 @@ rhel_post_check_patch_work_day: >-
 # ca-certificates（e-ninsho CA）復旧の設定
 # ============================================================================
 # Java の cacerts のパスワード（Java 標準の既定値）
-rhel_post_check_ca_cert_keystore_password: "changeit"
+# rhel_post_check_ca_cert_keystore_password: "changeit"
  
 # ============================================================================
 # ServerProtect for Linux カーネルフックモジュール差し替えの設定

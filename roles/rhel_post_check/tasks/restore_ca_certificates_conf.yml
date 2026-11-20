@@ -34,8 +34,6 @@
       vars:
         __rhel_post_check_ca_cacerts_path: >-
           {{ __rhel_post_check_ca_java_path['stdout'] | trim | dirname | dirname }}/lib/security/cacerts
-        rhel_post_check_ca_keystore_password: >-
-          {{ rhel_post_check_ca_cert_keystore_password | default('changeit') }}
         __rhel_post_check_ca_before_detail_text: >-
           {{ (__rhel_post_check_ca_before_detail_slurp['content'] | b64decode)
             if (__rhel_post_check_ca_before_detail_stat['stat']['exists'] | default(false) | bool)
@@ -119,7 +117,7 @@
               - "{{ rhel_post_check_ca_keystore_password }}"
           register: __rhel_post_check_ca_keystore_list_before
           changed_when: false
-          no_log: true
+          
  
         - name: "Display message when target ca-certificates alias is missing in keystore"
           ansible.builtin.debug:
@@ -187,7 +185,7 @@
               become: true
               changed_when: true
               when: item | lower in __rhel_post_check_ca_current_alias_fp_map
-              no_log: true
+              
  
             # keytool による証明書インポートには専用モジュールが無いため command を使用
             - name: "Import ca-certificates into Java cacerts keystore"
@@ -210,7 +208,7 @@
                 label: "{{ item }}"
               become: true
               changed_when: true
-              no_log: true
+              
  
             # keytool による証明書一覧取得には専用モジュールが無いため command を使用
             - name: "List certificates in Java cacerts keystore after restore"
@@ -224,7 +222,7 @@
                   - "{{ rhel_post_check_ca_keystore_password }}"
               register: __rhel_post_check_ca_keystore_list_after
               changed_when: false
-              no_log: true
+              
  
             - name: "Assert reimported ca-certificates aliases exist in cacerts"
               ansible.builtin.assert:

@@ -1,13 +1,17 @@
 ---
-# 1. httpd.conf の存在確認（存在しない場合は作業不要の判定）
-- name: "Check if httpd configuration file exists"
-  ansible.builtin.stat:
-    path: "/etc/httpd/conf/httpd.conf"
-  register: __rhel_pre_check_httpd_conf_stat
+# 1. httpd利用有無(httpd_in_use)の確認（利用しない場合は作業不要の判定）
+- name: "Assert httpd_in_use is true or false"
+  ansible.builtin.assert:
+    that:
+      - rhel_pre_check_httpd_in_use | string | lower in ['true', 'false']
+    fail_msg: >-
+      [ERROR] httpd_in_use に true / false 以外の値が指定されています（指定値: "{{ rhel_pre_check_httpd_in_use }}"）。
+      inventory の group_vars の httpd_in_use を true または false で指定してください。
+    success_msg: "httpd_in_use: {{ rhel_pre_check_httpd_in_use | string | lower }}（true の場合のみ httpd 設定の退避を実行します）"
  
-# 2. httpd.conf が存在する場合のみ後続の取得・退避処理を実行
+# 2. httpd を利用する場合のみ後続の取得・退避処理を実行
 - name: "Backup and collect httpd configuration evidence"
-  when: __rhel_pre_check_httpd_conf_stat['stat']['exists'] | bool
+  when: rhel_pre_check_httpd_in_use | bool
   block:
     - name: "Create evidence directory for patch operations"
       ansible.builtin.file:
@@ -57,8 +61,9 @@
         mode: preserve
       when: __rhel_pre_check_httpd_service_stat['stat']['exists'] | bool
  
-- name: "Display skip message when httpd is not installed"
+# 3. httpd 未利用の場合は処理をスキップする
+- name: "Display skip message when httpd is not in use"
   ansible.builtin.debug:
-    msg: "httpd is not installed (/etc/httpd/conf/httpd.conf not found). Skipping httpd backup tasks."
-  when: not (__rhel_pre_check_httpd_conf_stat['stat']['exists'] | bool)
+    msg: "httpdを利用していないため処理をスキップします。"
+  when: not (rhel_pre_check_httpd_in_use | bool)
 

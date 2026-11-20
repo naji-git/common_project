@@ -1,21 +1,25 @@
 ---
-# 1. httpd.conf の存在確認（存在しない場合は作業不要の判定）
-- name: "Check if httpd configuration file exists"
-  ansible.builtin.stat:
-    path: "/etc/httpd/conf/httpd.conf"
-  register: __rhel_pre_reboot_recovery_httpd_conf_stat
-
-# 2. httpd.conf が存在する場合のみ後続の取得・退避・復旧処理を実行
+# 1. httpd利用有無(httpd_in_use)の確認（利用しない場合は作業不要の判定）
+- name: "Assert httpd_in_use is true or false"
+  ansible.builtin.assert:
+    that:
+      - rhel_pre_reboot_recovery_httpd_in_use | string | lower in ['true', 'false']
+    fail_msg: >-
+      [ERROR] httpd_in_use に true / false 以外の値が指定されています（指定値: "{{ rhel_pre_reboot_recovery_httpd_in_use }}"）。
+      inventory の group_vars の httpd_in_use を true または false で指定してください。
+    success_msg: "httpd_in_use: {{ rhel_pre_reboot_recovery_httpd_in_use | string | lower }}（true の場合のみ httpd 設定の復旧を実行します）"
+ 
+# 2. httpd を利用する場合のみ後続の取得・退避・復旧処理を実行
 - name: "Restore httpd configuration and verify service state"
-  when: __rhel_pre_reboot_recovery_httpd_conf_stat['stat']['exists'] | bool
+  when: rhel_pre_reboot_recovery_httpd_in_use | bool
   block:
-
+ 
     - name: "Create evidence directory for patch operations"
       ansible.builtin.file:
         path: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}"
         state: directory
         mode: "0755"
-
+ 
     # --- 1. /etc/httpd/conf.modules.d 配下情報取得 ---
     # ディレクトリ配下のファイル一覧を改行区切りでそのまま保存するため shell を使用
     - name: "List files under conf.modules.d directory after patch"
@@ -23,13 +27,13 @@
         ls -1 /etc/httpd/conf.modules.d
       register: __rhel_pre_reboot_recovery_conf_modules_list
       changed_when: false
-
+ 
     - name: "Save conf.modules.d file list to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_reboot_recovery_conf_modules_list['stdout'] }}\n"
         dest: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_after"
         mode: "0644"
-
+ 
     # --- 2. /etc/httpd/conf.d 配下情報取得 ---
     # ディレクトリ配下のファイル一覧を改行区切りでそのまま保存するため shell を使用
     - name: "List files under conf.d directory after patch"
@@ -37,19 +41,19 @@
         ls -1 /etc/httpd/conf.d
       register: __rhel_pre_reboot_recovery_conf_d_list
       changed_when: false
-
+ 
     - name: "Save conf.d file list to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_reboot_recovery_conf_d_list['stdout'] }}\n"
         dest: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_after"
         mode: "0644"
-
+ 
     # --- 3. httpd.service 退避 ---
     - name: "Check if httpd systemd service file exists"
       ansible.builtin.stat:
         path: "/usr/lib/systemd/system/httpd.service"
       register: __rhel_pre_reboot_recovery_httpd_service_stat
-
+ 
     - name: "Backup post-patch httpd systemd service file"
       ansible.builtin.copy:
         src: "/usr/lib/systemd/system/httpd.service"
@@ -57,46 +61,47 @@
         remote_src: true
         mode: preserve
       when: __rhel_pre_reboot_recovery_httpd_service_stat['stat']['exists'] | bool
-
+ 
     # ==================================================
     # 差分比較・余剰ファイル移動・設定およびサービス復旧
     # ==================================================
-
     # --- 4. conf.modules.d 比較と余剰ファイル退避 ---
     - name: "Check if pre-patch conf.modules.d file list exists"
       ansible.builtin.stat:
         path: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_before"
       register: __rhel_pre_reboot_recovery_modules_before_stat
-
+ 
     - name: "Compare conf.modules.d against pre-patch state"
       when: __rhel_pre_reboot_recovery_modules_before_stat['stat']['exists'] | bool
       block:
-
+ 
         # 事前・事後一覧の差分から新規追加分のみを抽出するため diff, grep, sed を組み合わせた shell を使用
         - name: "Detect added configuration files in conf.modules.d"
           ansible.builtin.shell: >-
-            diff -u "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_before" "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_after" | grep -E '^\+[^+]' | sed 's/^+//'; exit ${PIPESTATUS[0]}
+            diff -u "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_before"
+            "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_after"
+            | grep -E '^\+[^+]' | sed 's/^+//'; exit ${PIPESTATUS[0]}
           args:
             executable: /bin/bash
           register: __rhel_pre_reboot_recovery_added_modules_files
           changed_when: false
           failed_when: __rhel_pre_reboot_recovery_added_modules_files['rc'] not in [0, 1]
-
+ 
         - name: "Display message when conf.modules.d matches pre-patch state"
           ansible.builtin.debug:
             msg: "[OK] conf.modules.d に差分はありません。パッチ適用前の構成と一致しています。"
           when: __rhel_pre_reboot_recovery_added_modules_files['rc'] == 0
-
+ 
         - name: "Restore conf.modules.d when difference is detected"
           when: __rhel_pre_reboot_recovery_added_modules_files['rc'] == 1
           block:
-
+ 
             - name: "Display message for evacuating added files in conf.modules.d"
               ansible.builtin.debug:
                 msg: "conf.modules.d:余剰ファイル({{ item }})を退避します"
               loop: "{{ __rhel_pre_reboot_recovery_added_modules_files['stdout_lines'] }}"
               when: __rhel_pre_reboot_recovery_added_modules_files['stdout_lines'] | length > 0
-
+ 
             # 差分として検知された余剰ファイルを退避ディレクトリに移動するため command を使用
             - name: "Move added files in conf.modules.d to evidence directory"
               ansible.builtin.command:
@@ -108,28 +113,29 @@
               loop: "{{ __rhel_pre_reboot_recovery_added_modules_files['stdout_lines'] }}"
               when: __rhel_pre_reboot_recovery_added_modules_files['stdout_lines'] | length > 0
               changed_when: true
-
+ 
             # 余剰ファイル移動後のディレクトリ状態を再取得するため shell を使用
             - name: "Rescan files in conf.modules.d after cleanup"
               ansible.builtin.shell: >-
                 ls -1 /etc/httpd/conf.modules.d
               register: __rhel_pre_reboot_recovery_conf_modules_after_mv_list
               changed_when: false
-
+ 
             - name: "Save rescanned conf.modules.d file list to evidence file"
               ansible.builtin.copy:
                 content: "{{ __rhel_pre_reboot_recovery_conf_modules_after_mv_list['stdout'] }}\n"
                 dest: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_after_mv"
                 mode: "0644"
-
+ 
             # 移動後状態と事前エビデンスの差分を取得するため shell を使用
             - name: "Check diff of conf.modules.d against pre-patch state"
               ansible.builtin.shell: >-
-                diff -u "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_before" "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_after_mv"
+                diff -u "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_before"
+                "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_after_mv"
               register: __rhel_pre_reboot_recovery_diff_modules_final
               changed_when: false
               failed_when: __rhel_pre_reboot_recovery_diff_modules_final['rc'] not in [0, 1]
-
+ 
             - name: "Assert conf.modules.d matches pre-patch state"
               ansible.builtin.assert:
                 that:
@@ -139,47 +145,51 @@
                   差分内容:
                   {{ __rhel_pre_reboot_recovery_diff_modules_final['stdout'] }}
                 success_msg: "[OK] conf.modules.d はパッチ適用前の構成と一致しています。"
-
+ 
     - name: "Display skip message when pre-patch conf.modules.d file list does not exist"
       ansible.builtin.debug:
-        msg: "[WARNING] conf.modules.d_before が存在しません ({{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_before)。比較確認処理をスキップします、ファイルの存在有無を確認してください。"
+        msg: >-
+          [WARNING] conf.modules.d_before が存在しません
+          ({{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.modules.d_before)。比較確認処理をスキップします、ファイルの存在有無を確認してください。
       when: not (__rhel_pre_reboot_recovery_modules_before_stat['stat']['exists'] | bool)
-
+ 
     # --- 5. conf.d 比較と余剰ファイル退避 ---
     - name: "Check if pre-patch conf.d file list exists"
       ansible.builtin.stat:
         path: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_before"
       register: __rhel_pre_reboot_recovery_confd_before_stat
-
+ 
     - name: "Compare conf.d against pre-patch state"
       when: __rhel_pre_reboot_recovery_confd_before_stat['stat']['exists'] | bool
       block:
-
+ 
         # 事前・事後一覧の差分から新規追加分のみを抽出するため diff, grep, sed を組み合わせた shell を使用
         - name: "Detect added configuration files in conf.d"
           ansible.builtin.shell: >-
-            diff -u "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_before" "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_after" | grep -E '^\+[^+]' | sed 's/^+//'; exit ${PIPESTATUS[0]}
+            diff -u "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_before"
+            "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_after"
+            | grep -E '^\+[^+]' | sed 's/^+//'; exit ${PIPESTATUS[0]}
           args:
             executable: /bin/bash
           register: __rhel_pre_reboot_recovery_added_confd_files
           changed_when: false
           failed_when: __rhel_pre_reboot_recovery_added_confd_files['rc'] not in [0, 1]
-
+ 
         - name: "Display message when conf.d matches pre-patch state"
           ansible.builtin.debug:
             msg: "[OK] conf.d に差分はありません。パッチ適用前の構成と一致しています。"
           when: __rhel_pre_reboot_recovery_added_confd_files['rc'] == 0
-
+ 
         - name: "Restore conf.d when difference is detected"
           when: __rhel_pre_reboot_recovery_added_confd_files['rc'] == 1
           block:
-
+ 
             - name: "Display message for evacuating added files in conf.d"
               ansible.builtin.debug:
                 msg: "conf.d:余剰ファイル({{ item }})を退避します"
               loop: "{{ __rhel_pre_reboot_recovery_added_confd_files['stdout_lines'] }}"
               when: __rhel_pre_reboot_recovery_added_confd_files['stdout_lines'] | length > 0
-
+ 
             # 差分として検知された余剰ファイルを退避ディレクトリに移動するため command を使用
             - name: "Move added files in conf.d to evidence directory"
               ansible.builtin.command:
@@ -191,28 +201,29 @@
               loop: "{{ __rhel_pre_reboot_recovery_added_confd_files['stdout_lines'] }}"
               when: __rhel_pre_reboot_recovery_added_confd_files['stdout_lines'] | length > 0
               changed_when: true
-
+ 
             # 余剰ファイル移動後のディレクトリ状態を再取得するため shell を使用
             - name: "Rescan files in conf.d after cleanup"
               ansible.builtin.shell: >-
                 ls -1 /etc/httpd/conf.d
               register: __rhel_pre_reboot_recovery_conf_d_after_mv_list
               changed_when: false
-
+ 
             - name: "Save rescanned conf.d file list to evidence file"
               ansible.builtin.copy:
                 content: "{{ __rhel_pre_reboot_recovery_conf_d_after_mv_list['stdout'] }}\n"
                 dest: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_after_mv"
                 mode: "0644"
-
+ 
             # 移動後状態と事前エビデンスの差分を取得するため shell を使用
             - name: "Check diff of conf.d against pre-patch state"
               ansible.builtin.shell: >-
-                diff -u "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_before" "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_after_mv"
+                diff -u "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_before"
+                "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_after_mv"
               register: __rhel_pre_reboot_recovery_diff_confd_final
               changed_when: false
               failed_when: __rhel_pre_reboot_recovery_diff_confd_final['rc'] not in [0, 1]
-
+ 
             - name: "Assert conf.d matches pre-patch state"
               ansible.builtin.assert:
                 that:
@@ -222,22 +233,24 @@
                   差分内容:
                   {{ __rhel_pre_reboot_recovery_diff_confd_final['stdout'] }}
                 success_msg: "[OK] conf.d はパッチ適用前の構成と一致しています。"
-
+ 
     - name: "Display skip message when pre-patch conf.d file list does not exist"
       ansible.builtin.debug:
-        msg: "[WARNING] conf.d_before が存在しません ({{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_before)。比較確認処理をスキップします、ファイルの存在有無を確認してください。"
+        msg: >-
+          [WARNING] conf.d_before が存在しません
+          ({{ rhel_pre_reboot_recovery_patch_evidence_dir }}/conf.d_before)。比較確認処理をスキップします、ファイルの存在有無を確認してください。
       when: not (__rhel_pre_reboot_recovery_confd_before_stat['stat']['exists'] | bool)
-
+ 
     # --- 6. httpd.service の復旧 ---
     - name: "Check if pre-patch httpd systemd service file exists"
       ansible.builtin.stat:
         path: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/httpd.service_before"
       register: __rhel_pre_reboot_recovery_httpd_service_before_stat
-
+ 
     - name: "Restore httpd systemd service file and verify service state"
       when: __rhel_pre_reboot_recovery_httpd_service_before_stat['stat']['exists'] | bool
       block:
-
+ 
         - name: "Restore pre-patch httpd systemd service file"
           ansible.builtin.copy:
             src: "{{ rhel_pre_reboot_recovery_patch_evidence_dir }}/httpd.service_before"
@@ -245,13 +258,13 @@
             remote_src: true
             mode: "0644"
           become: true
-
+ 
         # --- 7. Apache サービス再読み込みと起動確認 ---
         - name: "Reload systemd daemon configuration"
           ansible.builtin.systemd:
             daemon_reload: true
           become: true
-
+ 
         # 起動直前のステータス詳細（ログ出力）を取得するため command を使用
         - name: "Check httpd service status before starting"
           ansible.builtin.command:
@@ -262,13 +275,13 @@
           register: __rhel_pre_reboot_recovery_httpd_status_before_start
           changed_when: false
           failed_when: __rhel_pre_reboot_recovery_httpd_status_before_start['rc'] not in [0, 3]
-
+ 
         - name: "Ensure httpd service is started"
           ansible.builtin.systemd:
             name: httpd
             state: started
           become: true
-
+ 
         # 起動直後のステータス詳細（アクティブ状態確認）を取得するため command を使用
         - name: "Verify httpd service is active after start"
           ansible.builtin.command:
@@ -278,14 +291,16 @@
               - httpd.service
           register: __rhel_pre_reboot_recovery_httpd_status_after_start
           changed_when: false
-
+ 
     - name: "Display skip message when pre-patch httpd systemd service file does not exist"
       ansible.builtin.debug:
-        msg: "[WARNING] httpd.service_before が存在しません ({{ rhel_pre_reboot_recovery_patch_evidence_dir }}/httpd.service_before)。httpd復旧をスキップします、httpd.serviceの内容確認後httpd.serviceを起動させてください。"
+        msg: >-
+          [WARNING] httpd.service_before が存在しません
+          ({{ rhel_pre_reboot_recovery_patch_evidence_dir }}/httpd.service_before)。httpd復旧をスキップします、httpd.serviceの内容確認後httpd.serviceを起動させてください。
       when: not (__rhel_pre_reboot_recovery_httpd_service_before_stat['stat']['exists'] | bool)
-
-# 3. httpd 未導入時のログ表示
-- name: "Display skip message when httpd is not installed"
+ 
+# 3. httpd 未利用の場合は処理をスキップする
+- name: "Display skip message when httpd is not in use"
   ansible.builtin.debug:
-    msg: "httpd未導入のため処理をスキップします。"
-  when: not (__rhel_pre_reboot_recovery_httpd_conf_stat['stat']['exists'] | bool)
+    msg: "httpdを利用していないため処理をスキップします。"
+  when: not (rhel_pre_reboot_recovery_httpd_in_use | bool)

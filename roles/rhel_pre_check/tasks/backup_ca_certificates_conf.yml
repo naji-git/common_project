@@ -58,7 +58,7 @@
           - -keystore
           - "{{ __rhel_pre_check_ca_cacerts_path }}"
           - -storepass
-          - "{{ rhel_pre_check_ca_cert_keystore_password }}"
+          - "{{ rhel_pre_check_java_keystore_password }}"
       register: __rhel_pre_check_ca_current_detail_out
       changed_when: false
       no_log: true
@@ -78,7 +78,7 @@
           - -keystore
           - "{{ __rhel_pre_check_ca_default_cacerts_path }}"
           - -storepass
-          - "{{ rhel_pre_check_ca_cert_keystore_password }}"
+          - "{{ rhel_pre_check_java_keystore_password }}"
       register: __rhel_pre_check_ca_default_detail_out
       changed_when: false
       no_log: true
@@ -142,7 +142,7 @@
                   - -keystore
                   - "{{ __rhel_pre_check_ca_cacerts_path }}"
                   - -storepass
-                  - "{{ rhel_pre_check_ca_cert_keystore_password }}"
+                  - "{{ rhel_pre_check_java_keystore_password }}"
                   - -rfc
                   - -file
                   - "{{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}_before.crt"

@@ -145,7 +145,6 @@
             label: "{{ item['item']['name'] }}"
           when: item['stat']['exists'] | bool
           changed_when: true
-          no_log: true
 
         # 事前状態と同じリンク先へシンボリックリンクを再作成
         - name: "Recreate original PostgreSQL symlinks under /bin"

@@ -7,7 +7,7 @@
   register: __rhel_pre_check_ca_java_path
   changed_when: false
   failed_when: __rhel_pre_check_ca_java_path['rc'] not in [0, 1]
-
+ 
 # 2. keytool の有無を確認（PATH 上に無い場合は対象なしの判定）
 # command -v はシェル組み込みコマンドのため shell を使用
 - name: "Check if keytool command exists"
@@ -16,7 +16,7 @@
   register: __rhel_pre_check_ca_keytool_path
   changed_when: false
   failed_when: __rhel_pre_check_ca_keytool_path['rc'] not in [0, 1]
-
+ 
 # 3. java と keytool が存在する場合のみ OS標準ストアと現行 cacerts の差分を確認し退避
 - name: "Compare Java cacerts with OS trust store and backup extra certificates"
   when:
@@ -29,13 +29,13 @@
     __rhel_pre_check_ca_default_cacerts_path: >-
       {{ rhel_pre_check_patch_evidence_dir }}/cacerts.default
   block:
-
+ 
     - name: "Create evidence directory for patch operations"
       ansible.builtin.file:
         path: "{{ rhel_pre_check_patch_evidence_dir }}"
         state: directory
         mode: "0755"
-
+ 
     # OS標準のCA証明書ストアから Java cacerts 形式を生成する専用モジュールが無いため command を使用
     - name: "Extract OS standard CA trust store to Java cacerts format"
       ansible.builtin.command:
@@ -48,7 +48,7 @@
           - --overwrite
           - "{{ __rhel_pre_check_ca_default_cacerts_path }}"
       changed_when: true
-
+ 
     # keytool による証明書一覧取得には専用モジュールが無いため command を使用
     - name: "List certificates in current Java cacerts keystore"
       ansible.builtin.command:
@@ -62,13 +62,13 @@
       register: __rhel_pre_check_ca_current_detail_out
       changed_when: false
       no_log: true
-
+ 
     - name: "Save current Java cacerts certificate list to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_ca_current_detail_out['stdout'] }}\n"
         dest: "{{ rhel_pre_check_patch_evidence_dir }}/cacerts.current.detail"
         mode: "0644"
-
+ 
     # keytool による証明書一覧取得には専用モジュールが無いため command を使用
     - name: "List certificates in extracted OS default cacerts keystore"
       ansible.builtin.command:
@@ -82,55 +82,57 @@
       register: __rhel_pre_check_ca_default_detail_out
       changed_when: false
       no_log: true
-
+ 
     - name: "Save OS default cacerts certificate list to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_ca_default_detail_out['stdout'] }}\n"
         dest: "{{ rhel_pre_check_patch_evidence_dir }}/cacerts.default.detail"
         mode: "0644"
-
+ 
     - name: "Extract and compare SHA-256 fingerprints between current and default cacerts"
       vars:
         __rhel_pre_check_ca_current_sha256_lines: >-
           {{ __rhel_pre_check_ca_current_detail_out['stdout_lines'] | default([])
-             | select('search', 'SHA-256') | list }}
+              | select('search', 'SHA-256') | list }}
         __rhel_pre_check_ca_default_sha256_lines: >-
           {{ __rhel_pre_check_ca_default_detail_out['stdout_lines'] | default([])
-             | select('search', 'SHA-256') | list }}
-        __rhel_pre_check_ca_diff_sha256_lines: >-
-          {{ __rhel_pre_check_ca_current_sha256_lines
-             | difference(__rhel_pre_check_ca_default_sha256_lines) }}
-        __rhel_pre_check_ca_diff_fingerprints: >-
-          {{ __rhel_pre_check_ca_diff_sha256_lines
-             | map('regex_replace', '^.*SHA-256[^0-9A-Fa-f]*([0-9A-Fa-f:]+).*$', '\1')
-             | list }}
+              | select('search', 'SHA-256') | list }}
+        __rhel_pre_check_ca_default_fingerprints: >-
+          {{ __rhel_pre_check_ca_default_sha256_lines
+              | map('regex_replace', '^.*SHA-256[^0-9A-Fa-f]*([0-9A-Fa-f:]+).*$', '\1')
+              | list }}
+        __rhel_pre_check_ca_alias_fp_regex: >-
+          (?m)^(.+?), (?:[^,\r\n]*\d[^,\r\n]*(?:, \d{4})?), (?:[A-Za-z]+Entry),[ \t]*\r?\n[^\r\n]*SHA-256[^0-9A-Fa-f]*([0-9A-Fa-f:]+)
         __rhel_pre_check_ca_alias_fp_pairs: >-
           {{ __rhel_pre_check_ca_current_detail_out['stdout']
-             | regex_findall('(?m)^([^,\r\n]+),[^\r\n]+\r?\n[^\r\n]*SHA-256[^0-9A-Fa-f]*([0-9A-Fa-f:]+)') }}
+              | regex_findall(__rhel_pre_check_ca_alias_fp_regex) }}
         __rhel_pre_check_ca_diff_entries: >-
           {{ __rhel_pre_check_ca_alias_fp_pairs
-             | selectattr(1, 'in', __rhel_pre_check_ca_diff_fingerprints)
-             | list }}
+              | rejectattr(1, 'in', __rhel_pre_check_ca_default_fingerprints)
+              | list }}
       block:
-
+ 
+        - name: "Assert all certificate entries in current cacerts were parsed"
+          ansible.builtin.assert:
+            that:
+              - __rhel_pre_check_ca_alias_fp_pairs | length == __rhel_pre_check_ca_current_sha256_lines | length
+            fail_msg: >-
+              [ERROR] 現行 cacerts の証明書一覧から、エイリアス名を取得できないエントリがあります
+              （SHA-256 の行: {{ __rhel_pre_check_ca_current_sha256_lines | length }} 件、
+              エイリアス名を取得できたエントリ: {{ __rhel_pre_check_ca_alias_fp_pairs | length }} 件）。
+              {{ rhel_pre_check_patch_evidence_dir }}/cacerts.current.detail の内容を確認し、
+              エイリアス名の表記（コンマ・日付の形式など）が想定と異なる場合は手動で退避してください。
+            quiet: true
+ 
         - name: "Display skip message when no extra ca-certificates exist in current cacerts"
           ansible.builtin.debug:
             msg: "現行 cacerts にのみ存在する ca-certificates は無いため退避処理をスキップします"
           when: __rhel_pre_check_ca_diff_entries | length == 0
-
+ 
         - name: "Export extra ca-certificates and save evidence"
           when: __rhel_pre_check_ca_diff_entries | length > 0
           block:
-
-            - name: "Assert all diff fingerprints resolved to aliases"
-              ansible.builtin.assert:
-                that:
-                  - (__rhel_pre_check_ca_diff_entries | length) == (__rhel_pre_check_ca_diff_fingerprints | length)
-                fail_msg: >-
-                  [ERROR] 差分フィンガープリントから証明書エイリアス名を特定できませんでした。
-                  {{ rhel_pre_check_patch_evidence_dir }}/cacerts.current.detail の内容を確認してください。
-                quiet: true
-
+ 
             # keytool には証明書を書き出す専用モジュールが無いため command を使用（ファイルは毎回上書きされる）
             - name: "Export extra ca-certificates to evidence directory"
               ansible.builtin.command:
@@ -151,7 +153,7 @@
                 label: "{{ item[0] }}"
               changed_when: true
               no_log: true
-
+ 
             - name: "Check if exported ca-certificates files exist and are not empty"
               ansible.builtin.stat:
                 path: "{{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}_before.crt"
@@ -159,7 +161,7 @@
               loop_control:
                 label: "{{ item[0] }}"
               register: __rhel_pre_check_ca_cert_stats
-
+ 
             - name: "Assert exported ca-certificates files exist and have content"
               ansible.builtin.assert:
                 that:
@@ -172,7 +174,7 @@
               loop: "{{ __rhel_pre_check_ca_cert_stats['results'] }}"
               loop_control:
                 label: "{{ item['item'][0] }}"
-
+ 
             - name: "Display message when ca-certificates is exported"
               ansible.builtin.debug:
                 msg: >-
@@ -180,20 +182,20 @@
               loop: "{{ __rhel_pre_check_ca_diff_entries }}"
               loop_control:
                 label: "{{ item[0] }}"
-
+ 
             # rhel_post_check は別ジョブで実行されるため、退避したエイリアス名を証跡として残す
             - name: "Save target alias names to evidence file"
               ansible.builtin.copy:
                 content: "{{ (__rhel_pre_check_ca_diff_entries | map('first') | join('\n')) ~ '\n' }}"
                 dest: "{{ rhel_pre_check_patch_evidence_dir }}/ca-certificates_alias_before"
                 mode: "0644"
-
+ 
             - name: "Save SHA256 fingerprints to evidence file"
               ansible.builtin.copy:
                 content: "{{ (__rhel_pre_check_ca_diff_entries | map('last') | join('\n')) ~ '\n' }}"
                 dest: "{{ rhel_pre_check_patch_evidence_dir }}/ca-certificates_FingerprintSHA256_before"
                 mode: "0644"
-
+ 
 - name: "Display skip message when java or keytool is not installed"
   ansible.builtin.debug:
     msg: "ca-certificatesの対象が無いので処理をスキップします"

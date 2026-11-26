@@ -38,18 +38,18 @@
           {{ (__rhel_post_check_ca_before_detail_slurp['content'] | b64decode)
             if (__rhel_post_check_ca_before_detail_stat['stat']['exists'] | default(false) | bool)
             else '' }}
+        __rhel_post_check_ca_alias_fp_regex: >-
+          (?m)^(.+?), (?:[^,\r\n]*\d[^,\r\n]*(?:, \d{4})?), (?:[A-Za-z]+Entry),[ \t]*\r?\n[^\r\n]*SHA-256[^0-9A-Fa-f]*([0-9A-Fa-f:]+)
+        __rhel_post_check_ca_before_alias_fp_pairs: >-
+          {{ __rhel_post_check_ca_before_detail_text
+              | regex_findall(__rhel_post_check_ca_alias_fp_regex) }}
         __rhel_post_check_ca_before_alias_fp_map: >-
-          {{ dict(
-             __rhel_post_check_ca_before_detail_text
-             | regex_findall('(?m)^([^,\r\n]+),[^\r\n]+\r?\n[^\r\n]*SHA-256[^0-9A-Fa-f]*([0-9A-Fa-f:]+)')
-             | map('map', 'lower') | list
-            ) }}
+          {{ dict(__rhel_post_check_ca_before_alias_fp_pairs | map('map', 'lower') | list) }}
+        __rhel_post_check_ca_current_alias_fp_pairs: >-
+          {{ __rhel_post_check_ca_keystore_list_before['stdout']
+              | regex_findall(__rhel_post_check_ca_alias_fp_regex) }}
         __rhel_post_check_ca_current_alias_fp_map: >-
-          {{ dict(
-             __rhel_post_check_ca_keystore_list_before['stdout']
-             | regex_findall('(?m)^([^,\r\n]+),[^\r\n]+\r?\n[^\r\n]*SHA-256[^0-9A-Fa-f]*([0-9A-Fa-f:]+)')
-             | map('map', 'lower') | list
-            ) }}
+          {{ dict(__rhel_post_check_ca_current_alias_fp_pairs | map('map', 'lower') | list) }}
         __rhel_post_check_ca_matched_aliases: >-
           {{ __rhel_post_check_ca_target_aliases
             | select('in', __rhel_post_check_ca_current_alias_fp_map.keys() | list)
@@ -119,6 +119,22 @@
           changed_when: false
           no_log: true
  
+        - name: "Assert all certificate entries in cacerts listings were parsed"
+          ansible.builtin.assert:
+            that:
+              - >-
+                __rhel_post_check_ca_current_alias_fp_pairs | length ==
+                (__rhel_post_check_ca_keystore_list_before['stdout_lines'] | select('search', 'SHA-256') | list | length)
+              - >-
+                __rhel_post_check_ca_before_alias_fp_pairs | length ==
+                (__rhel_post_check_ca_before_detail_text.splitlines() | select('search', 'SHA-256') | list | length)
+            fail_msg: >-
+              [ERROR] cacerts の証明書一覧から、エイリアス名を取得できないエントリがあります。
+              keytool -list の出力と {{ rhel_post_check_patch_evidence_dir }}/cacerts.current.detail の内容を確認し、
+              エイリアス名の表記（コンマ・日付の形式など）が想定と異なる場合は、
+              {{ rhel_post_check_patch_evidence_dir }}/<エイリアス名>_before.crt を手動でインポートしてください。
+            quiet: true
+ 
         - name: "Display message when target ca-certificates alias is missing in keystore"
           ansible.builtin.debug:
             msg: "keytoolに存在しないため、{{ item }}:ca_certificatesの再インポート処理を実施します"
@@ -156,10 +172,10 @@
             __rhel_post_check_ca_unchanged_aliases: >-
               {%- set matched = [] -%}
               {%- for alias in __rhel_post_check_ca_target_aliases -%}
-               {%- if (alias | lower in __rhel_post_check_ca_current_alias_fp_map)
-                   and ((__rhel_post_check_ca_before_alias_fp_map[alias | lower] | default('')) == (__rhel_post_check_ca_current_alias_fp_map[alias | lower] | default(''))) -%}
+                {%- if (alias | lower in __rhel_post_check_ca_current_alias_fp_map)
+                    and ((__rhel_post_check_ca_before_alias_fp_map[alias | lower] | default('')) == (__rhel_post_check_ca_current_alias_fp_map[alias | lower] | default(''))) -%}
                 {%- set _ = matched.append(alias) -%}
-               {%- endif -%}
+                {%- endif -%}
               {%- endfor -%}
               {{ matched }}
             __rhel_post_check_ca_reimport_aliases: >-
@@ -243,9 +259,9 @@
               vars:
                 __rhel_post_check_ca_after_alias_fp_map: >-
                   {{ dict(
-                     __rhel_post_check_ca_keystore_list_after['stdout']
-                     | regex_findall('(?m)^([^,\r\n]+),[^\r\n]+\r?\n[^\r\n]*SHA-256[^0-9A-Fa-f]*([0-9A-Fa-f:]+)')
-                     | map('map', 'lower') | list
+                      __rhel_post_check_ca_keystore_list_after['stdout']
+                      | regex_findall(__rhel_post_check_ca_alias_fp_regex)
+                      | map('map', 'lower') | list
                     ) }}
               ansible.builtin.assert:
                 that:
@@ -261,3 +277,4 @@
               loop_control:
                 label: "{{ item }}"
               when: __rhel_post_check_ca_before_alias_fp_map | length > 0
+

@@ -1,16 +1,16 @@
 ---
 - name: "Check if pre-check PostgreSQL symlinks evidence files exist"
   ansible.builtin.stat:
-    path: "{{ rhel_post_check_patch_evidence_dir }}/{{ item }}"
+    path: "{{ rhel_post_check_patch_evidence_directory }}/{{ item }}"
   loop:
     - pg_link_bin_before
     - pg_link_usr_before
   register: __rhel_post_check_pg_link_pre_stats
-
+ 
 - name: "Verify and restore PostgreSQL related symlinks after patch"
   when: __rhel_post_check_pg_link_pre_stats['results'] | selectattr('stat.exists', 'equalto', true) | list | length == 2
   block:
-
+ 
     # 複数シンボリックリンクのリンク先一覧を一括取得するため command を使用
     - name: "List PostgreSQL symlinks under /bin after patch"
       ansible.builtin.command: >-
@@ -20,14 +20,14 @@
       register: __rhel_post_check_pg_link_bin
       failed_when: false
       changed_when: false
-
+ 
     - name: "Save PostgreSQL symlinks under /bin to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_post_check_pg_link_bin['stdout'] }}\n"
-        dest: "{{ rhel_post_check_patch_evidence_dir }}/pg_link_bin_after"
+        dest: "{{ rhel_post_check_patch_evidence_directory }}/pg_link_bin_after"
         mode: "0644"
       when: __rhel_post_check_pg_link_bin['stdout'] | length > 0
-
+ 
     # 複数シンボリックリンクのリンク先一覧を一括取得するため command を使用
     - name: "List PostgreSQL symlinks under /usr/bin after patch"
       ansible.builtin.command: >-
@@ -37,71 +37,74 @@
       register: __rhel_post_check_pg_link_usr
       failed_when: false
       changed_when: false
-
+ 
     - name: "Save PostgreSQL symlinks under /usr/bin to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_post_check_pg_link_usr['stdout'] }}\n"
-        dest: "{{ rhel_post_check_patch_evidence_dir }}/pg_link_usr_after"
+        dest: "{{ rhel_post_check_patch_evidence_directory }}/pg_link_usr_after"
         mode: "0644"
       when: __rhel_post_check_pg_link_usr['stdout'] | length > 0
-
+ 
     - name: "Check if post-check PostgreSQL symlinks evidence file under /bin exists"
       ansible.builtin.stat:
-        path: "{{ rhel_post_check_patch_evidence_dir }}/pg_link_bin_after"
+        path: "{{ rhel_post_check_patch_evidence_directory }}/pg_link_bin_after"
       register: __rhel_post_check_pg_link_bin_after_stat
-
+ 
     - name: "Display skip message when post-check PostgreSQL symlinks evidence file under /bin does not exist"
       ansible.builtin.debug:
-        msg: "[WARNING] pg_link_bin_after が存在しません ({{ rhel_post_check_patch_evidence_dir }}/pg_link_bin_after)。比較確認処理とリンク復旧処理をスキップします、ファイルの存在有無を確認してください。"
+        msg: >-
+          [WARNING] pg_link_bin_after が存在しません
+          ({{ rhel_post_check_patch_evidence_directory }}/pg_link_bin_after)。比較確認処理とリンク復旧処理をスキップします、ファイルの存在有無を確認してください。
       when: not (__rhel_post_check_pg_link_bin_after_stat['stat']['exists'] | bool)
-
+ 
     # 事前・事後の差分有無を判定するため diff コマンドを含む shell を使用
     - name: "Check diff between pre and post PostgreSQL symlinks"
       ansible.builtin.shell: >-
-        diff -u "{{ rhel_post_check_patch_evidence_dir }}/pg_link_bin_before" "{{ rhel_post_check_patch_evidence_dir }}/pg_link_bin_after"
+        diff -u "{{ rhel_post_check_patch_evidence_directory }}/pg_link_bin_before"
+        "{{ rhel_post_check_patch_evidence_directory }}/pg_link_bin_after"
       register: __rhel_post_check_pg_link_diff
       when: __rhel_post_check_pg_link_bin_after_stat['stat']['exists'] | bool
       changed_when: false
       failed_when: __rhel_post_check_pg_link_diff['rc'] not in [0, 1]
-
+ 
     - name: "Display message when PostgreSQL symlinks differ from pre-patch state"
       ansible.builtin.debug:
         msg: "Postgresqlのシンボリックリンク構成がパッチ適用前と異なるため復旧処理を実施します。"
       when:
         - __rhel_post_check_pg_link_bin_after_stat['stat']['exists'] | bool
         - __rhel_post_check_pg_link_diff['rc'] | default(0) == 1
-
+ 
     - name: "Display message when PostgreSQL symlinks match pre-patch state"
       ansible.builtin.debug:
         msg: "Postgresqlのシンボリックリンク構成がパッチ適用前と同じのため処理をスキップをします。"
       when:
         - __rhel_post_check_pg_link_bin_after_stat['stat']['exists'] | bool
         - __rhel_post_check_pg_link_diff['rc'] | default(1) == 0
-
+ 
     # ==================================================
     # 差分検知時のシンボリックリンク復旧処理
     # ==================================================
     - name: "Restore PostgreSQL symlinks when difference is detected"
       when: __rhel_post_check_pg_link_diff['rc'] | default(0) == 1
       block:
-
+ 
         - name: "Set link restore backup directory path"
           ansible.builtin.set_fact:
-            __rhel_post_check_link_backup_dir: "{{ rhel_post_check_patch_evidence_dir }}/{{ ansible_facts['date_time']['date'] | replace('-', '') }}_linkrestore"
-
+            __rhel_post_check_link_backup_dir: "{{ rhel_post_check_patch_evidence_directory }}/{{ __rhel_post_check_jst_date }}_linkrestore"
+ 
         - name: "Create backup directory for modified PostgreSQL binaries"
           ansible.builtin.file:
             path: "{{ __rhel_post_check_link_backup_dir }}"
             state: directory
             mode: "0755"
-
+ 
         # 事前エビデンスからリンク定義（リンク元と参照先）を安全にパースするため shell を使用
         - name: "Extract original PostgreSQL symlink mappings from pre-check evidence"
           ansible.builtin.shell: |
             "{{ ansible_facts['python']['executable'] | default('python') }}" - << 'EOF'
             # -*- coding: utf-8 -*-
             import json
-            before_file = "{{ rhel_post_check_patch_evidence_dir }}/pg_link_bin_before"
+            before_file = "{{ rhel_post_check_patch_evidence_directory }}/pg_link_bin_before"
             links = []
             try:
                 with open(before_file, 'r') as f:
@@ -122,11 +125,11 @@
             EOF
           register: __rhel_post_check_extracted_links
           changed_when: false
-
+ 
         - name: "Set parsed symlinks list fact"
           ansible.builtin.set_fact:
             __rhel_post_check_target_links: "{{ __rhel_post_check_extracted_links['stdout'] | from_json }}"
-
+ 
         # 実機 /bin 配下に実在するファイルのみを退避ディレクトリへ移動
         - name: "Check existence of existing binaries before moving"
           ansible.builtin.stat:
@@ -135,7 +138,7 @@
           loop_control:
             label: "{{ item['name'] }}"
           register: __rhel_post_check_bin_stats
-
+ 
         # 既存の実体を退避ディレクトリへ移動するため command を使用
         - name: "Move modified binaries to restore backup directory"
           ansible.builtin.command: "mv /bin/{{ item['item']['name'] }} {{ __rhel_post_check_link_backup_dir }}/"
@@ -145,7 +148,7 @@
             label: "{{ item['item']['name'] }}"
           when: item['stat']['exists'] | bool
           changed_when: true
-
+ 
         # 事前状態と同じリンク先へシンボリックリンクを再作成
         - name: "Recreate original PostgreSQL symlinks under /bin"
           ansible.builtin.file:
@@ -158,11 +161,10 @@
           loop: "{{ __rhel_post_check_target_links }}"
           loop_control:
             label: "{{ item['name'] }}"
-
+ 
     # --------------------------------------------------
     # 復旧後の再取得・検証
     # --------------------------------------------------
-
     # 復旧後の /bin 配下リンク状態を再取得するため command を使用
     - name: "List restored PostgreSQL symlinks under /bin"
       ansible.builtin.command: >-
@@ -172,13 +174,13 @@
       register: __rhel_post_check_pg_link_bin_restore
       failed_when: false
       changed_when: false
-
+ 
     - name: "Save restored PostgreSQL symlinks under /bin to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_post_check_pg_link_bin_restore['stdout'] }}\n"
-        dest: "{{ rhel_post_check_patch_evidence_dir }}/pg_link_bin_restore"
+        dest: "{{ rhel_post_check_patch_evidence_directory }}/pg_link_bin_restore"
         mode: "0644"
-
+ 
     # 復旧後の /usr/bin 配下リンク状態を再取得するため command を使用
     - name: "List restored PostgreSQL symlinks under /usr/bin"
       ansible.builtin.command: >-
@@ -188,56 +190,57 @@
       register: __rhel_post_check_pg_link_usr_restore
       failed_when: false
       changed_when: false
-
+ 
     - name: "Save restored PostgreSQL symlinks under /usr/bin to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_post_check_pg_link_usr_restore['stdout'] }}\n"
-        dest: "{{ rhel_post_check_patch_evidence_dir }}/pg_link_usr_restore"
+        dest: "{{ rhel_post_check_patch_evidence_directory }}/pg_link_usr_restore"
         mode: "0644"
-
+ 
     # 日時・サイズメタデータを除外してリンク構造（パス -> リンク先）のみを抽出比較するため shell を使用
     - name: "Verify /bin symlinks match pre-check evidence"
       ansible.builtin.shell: >-
         diff -u
-        <(grep ' -> ' "{{ rhel_post_check_patch_evidence_dir }}/pg_link_bin_before" | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}')
-        <(grep ' -> ' "{{ rhel_post_check_patch_evidence_dir }}/pg_link_bin_restore" | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}')
+        <(grep ' -> ' "{{ rhel_post_check_patch_evidence_directory }}/pg_link_bin_before" | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}')
+        <(grep ' -> ' "{{ rhel_post_check_patch_evidence_directory }}/pg_link_bin_restore" | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}')
       args:
         executable: /bin/bash
       register: __rhel_post_check_diff_bin_final
       changed_when: false
       failed_when: __rhel_post_check_diff_bin_final['rc'] not in [0, 1]
-
+ 
     - name: "Assert /bin symlinks are completely restored"
       ansible.builtin.assert:
         that:
           - __rhel_post_check_diff_bin_final['stdout'] | trim | length == 0
         fail_msg: >-
           [ERROR] /bin 配下のシンボリックリンク復旧後に構造上の差分が残っています。
-          エビデンスファイル ({{ rhel_post_check_patch_evidence_dir }}/pg_link_bin_restore) を確認し、手動で ln -s を再実行してください。
+          エビデンスファイル ({{ rhel_post_check_patch_evidence_directory }}/pg_link_bin_restore) を確認し、手動で ln -s を再実行してください。
         success_msg: "[OK] /bin 配下のシンボリックリンクは事前状態へ正常に復旧されました。"
-
+ 
     # 日時・サイズメタデータを除外してリンク構造（パス -> リンク先）のみを抽出比較するため shell を使用
     - name: "Verify /usr/bin symlinks match pre-check evidence"
       ansible.builtin.shell: >-
         diff -u
-        <(grep ' -> ' "{{ rhel_post_check_patch_evidence_dir }}/pg_link_usr_before" | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}')
-        <(grep ' -> ' "{{ rhel_post_check_patch_evidence_dir }}/pg_link_usr_restore" | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}')
+        <(grep ' -> ' "{{ rhel_post_check_patch_evidence_directory }}/pg_link_usr_before" | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}')
+        <(grep ' -> ' "{{ rhel_post_check_patch_evidence_directory }}/pg_link_usr_restore" | awk '{for(i=9;i<=NF;i++) printf $i (i==NF?RS:OFS)}')
       args:
         executable: /bin/bash
       register: __rhel_post_check_diff_usr_final
       changed_when: false
       failed_when: __rhel_post_check_diff_usr_final['rc'] not in [0, 1]
-
+ 
     - name: "Assert /usr/bin symlinks match pre-check evidence"
       ansible.builtin.assert:
         that:
           - __rhel_post_check_diff_usr_final['stdout'] | trim | length == 0
         fail_msg: >-
           [ERROR] /usr/bin 配下のシンボリックリンクに構造上の差分があります。
-          エビデンスファイル ({{ rhel_post_check_patch_evidence_dir }}/pg_link_usr_restore) を確認し、手動で ln -s を再実行してください。
+          エビデンスファイル ({{ rhel_post_check_patch_evidence_directory }}/pg_link_usr_restore) を確認し、手動で ln -s を再実行してください。
         success_msg: "[OK] /usr/bin 配下のシンボリックリンクは事前状態と一致しています。"
-
+ 
 - name: "Display skip message when PostgreSQL is not installed or pre-check evidence files do not exist"
   ansible.builtin.debug:
     msg: "PostgreSQL未導入 または pg_link_bin_before、pg_link_usr_beforeが存在しないため処理をスキップします。"
   when: __rhel_post_check_pg_link_pre_stats['results'] | selectattr('stat.exists', 'equalto', true) | list | length != 2
+

@@ -1,47 +1,54 @@
 ---
 # ============================================================================
-# 共通変数（共通変数プールで定義）
-# ============================================================================
-# rhel_system_platform                 # 'aws' または 'kasou'
- 
-# ============================================================================
 # 作業ディレクトリの設定
 # ============================================================================
+# パッチ作業のベースディレクトリ
+# システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で共通変数 rhel_patch_rpm_directory を指定する
+rhel_pre_check_base_directory: "{{ rhel_patch_base_directory | default('/home/ansible') }}"
  
-# パッチ（RPM）格納ディレクトリ（整理処理で削除する）
-# システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で指定する
-rhel_patch_rpm_directory: "/home/ansible/patch"
+# パッチ作業証跡ディレクトリ
+rhel_pre_check_patch_evidence_directory: "{{ rhel_pre_check_base_directory }}/rhel_patch"
  
-# エビデンス格納ディレクトリ（パッチ作業のベースディレクトリ）
-# rhel_pre_check と rhel_post_check で同じ変数を参照する。システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で指定する
-rhel_pre_check_patch_evidence_dir: "/home/ansible/rhel_patch"
+# パッチ（RPM）格納ディレクトリ（kernel-debug のパッチの有無の確認に使用する）
+rhel_pre_check_rpm_directory: "{{ rhel_pre_check_base_directory }}/patch"
  
 # ============================================================================
-# httpdの利用有無の設定
+# 作業日時（日本時間）の設定
 # ============================================================================
+# 対象サーバーのタイムゾーン（UTC または JST）に関係なく、日本時間（JST = UTC+9）の現在日時を求める。
+# ansible_facts['date_time']['iso8601'] は常に UTC のため、9時間を加えると、UTC・JST どちらのサーバーでも日本時間の日時になる。
+# （ansible_facts['date_time']['date'] はサーバーのタイムゾーンの日付で、UTC のサーバーでは日本時間と最大9時間ずれる）
+# ロール内部の判定用のため、通常は上書きしない
  
-rhel_pre_check_httpd_in_use: "{{ httpd_in_use }}"
+__rhel_pre_check_jst_now: >-
+  {{ ((ansible_facts['date_time']['iso8601'] | to_datetime('%Y-%m-%dT%H:%M:%SZ'))
+    + ('1970-01-01 09:00:00' | to_datetime - '1970-01-01 00:00:00' | to_datetime)).strftime('%Y-%m-%d %H:%M:%S') }}
+ 
+# 日本時間の日付（YYYYMMDD）。SAM 監視ログのファイル名に使用
+__rhel_pre_check_jst_date: "{{ __rhel_pre_check_jst_now[:10] | replace('-', '') }}"
+ 
+# 日本時間の日時（YYYYMMDDTHHMMSS）。作業ディレクトリのバックアップ名に使用
+__rhel_pre_check_jst_timestamp: "{{ __rhel_pre_check_jst_now | replace('-', '') | replace(':', '') | replace(' ', 'T') }}"
+ 
+# ============================================================================
+# httpd 設定退避の設定
+# ============================================================================
+# httpd を利用するか（共通変数 httpd_in_use を引き継ぐ。未定義の場合は false）
+# true の場合のみ httpd 設定の退避（backup_httpd_conf.yml）を実行し、false の場合はスキップする
+# システムごとに変更する場合は個別プロジェクトの group_vars で httpd_in_use を指定する
+rhel_pre_check_httpd_in_use: "{{ httpd_in_use | default(false) }}"
  
 # ============================================================================
 # ca-certificates（e-ninsho CA）退避の設定
 # ============================================================================
+# Java の cacerts のパスワード
+# rhel_pre_check_java_keystore_passwordをAAPの認証情報で設定
  
-# Java の cacerts から退避対象を探すエイリアスの検索パターン（大文字小文字を区別しない）
-rhel_pre_check_ca_cert_alias_pattern: "ninsho" 
- 
-# Java の cacerts のパスワード（Java 標準の既定値）
-# rhel_pre_check_ca_cert_keystore_password: "changeit"
 # ============================================================================
 # /boot 空き容量確保（kernel-debug 削除）の設定
 # ============================================================================
- 
 # プラットフォーム（kasou の場合のみ kernel-debug 削除を実行。それ以外はスキップ）
 rhel_pre_check_boot_space_platform: "{{ rhel_system_platform | default('') }}"
- 
-# パッチ（RPM）格納ディレクトリ
-# 直下に kernel-debug のパッチ（下記パターンに一致するファイル）がある場合のみ、kernel-debug 削除を実行する
-# rhel_post_check と共通の変数。システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で指定する
-rhel_patch_rpm_directory: "/home/ansible/patch"
  
 # kernel-debug のパッチ RPM のファイル名パターン（kernel-debug-devel など別パッケージを除くため、バージョン部の数字で始める）
 rhel_pre_check_boot_space_patch_file_pattern: "kernel-debug-[0-9]*.rpm"
@@ -67,5 +74,5 @@ rhel_pre_check_boot_space_supported_major_versions:
 # ロール内部の判定用のため、通常は上書きしない
 __rhel_pre_check_boot_space_applicable: >-
   {{ rhel_pre_check_boot_space_platform == 'kasou'
-     and ansible_facts['distribution_major_version'] in rhel_pre_check_boot_space_supported_major_versions }}
+    and ansible_facts['distribution_major_version'] in rhel_pre_check_boot_space_supported_major_versions }}
 

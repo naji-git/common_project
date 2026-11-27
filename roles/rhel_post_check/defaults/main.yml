@@ -3,29 +3,45 @@
 # 作業ディレクトリ・作業日の設定
 # ============================================================================
 # パッチ作業のベースディレクトリ
-rhel_post_check_base_dir: "/home/ansible"
+# システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で共通変数 rhel_patch_rpm_directory を指定する
+rhel_post_check_base_directory: "{{ rhel_patch_base_directory | default('/home/ansible') }}"
  
-# パッチ作業証跡ディレクトリ (/home/ansible/rhel_patch)
-rhel_post_check_patch_evidence_dir: "{{ rhel_post_check_base_dir }}/rhel_patch"
+# パッチ作業証跡ディレクトリ
+rhel_post_check_patch_evidence_directory: "{{ rhel_post_check_base_directory }}/rhel_patch"
  
 # パッチ（RPM）格納ディレクトリ（整理処理で削除する）
-# システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で指定する
-rhel_patch_rpm_directory: "/home/ansible/patch"
+rhel_post_check_rpm_directory: "{{ rhel_post_check_base_directory }}/patch"
  
 # パッチ作業証跡の退避ディレクトリ（<YYYYMMDD>）の作成先、および patch_mythos* の検索先
 # /home/ansible 配下に作成・検索するため dirname を外し、ベースディレクトリそのものを指定
-__rhel_post_check_work_parent_dir: "{{ rhel_post_check_base_dir }}"
+__rhel_post_check_work_parent_dir: "{{ rhel_post_check_base_directory }}"
+ 
+# ============================================================================
+# 作業日時（日本時間）の設定
+# ============================================================================
+# 対象サーバーのタイムゾーン（UTC または JST）に関係なく、日本時間（JST = UTC+9）の現在日時を求める。
+# ansible_facts['date_time']['iso8601'] は常に UTC のため、9時間を加えると、UTC・JST どちらのサーバーでも日本時間の日時になる。
+# （ansible_facts['date_time']['date'] はサーバーのタイムゾーンの日付で、UTC のサーバーでは日本時間と最大9時間ずれる）
+# ロール内部の判定用のため、通常は上書きしない
+__rhel_post_check_jst_now: >-
+  {{ ((ansible_facts['date_time']['iso8601'] | to_datetime('%Y-%m-%dT%H:%M:%SZ'))
+    + ('1970-01-01 09:00:00' | to_datetime - '1970-01-01 00:00:00' | to_datetime)).strftime('%Y-%m-%d %H:%M:%S') }}
+ 
+# 日本時間の日付（YYYYMMDD）。SAM 監視ログのファイル名、<日付>_linkrestore に使用
+__rhel_post_check_jst_date: "{{ __rhel_post_check_jst_now[:10] | replace('-', '') }}"
+ 
+# 日本時間の当日 0:00 の UNIX 時刻（UTC のエポック秒）。DISABLE ファイルの当日判定に使用
+__rhel_post_check_jst_today_start_epoch: "{{ ((ansible_facts['date_time']['epoch'] | int + 32400) // 86400) * 86400 - 32400 }}"
  
 # 作業日（退避ディレクトリ名 <YYYYMMDD> に使用）
-# 既定では実行日を YYYYMMDD 形式で取得する。固定したい場合は個別プロジェクトの group_vars で指定する
-rhel_post_check_patch_work_day: >-
-  {{ ansible_facts['date_time']['date'] | replace('-', '') }}
+# 既定では日本時間（JST）の実行日を YYYYMMDD 形式で取得する。固定したい場合は個別プロジェクトの group_vars で指定する
+rhel_post_check_patch_work_day: "{{ __rhel_post_check_jst_date }}"
  
 # ============================================================================
 # ca-certificates（e-ninsho CA）復旧の設定
 # ============================================================================
-# Java の cacerts のパスワード（Java 標準の既定値）
-# rhel_post_check_ca_cert_keystore_password: "changeit"
+# Java の cacerts のパスワード
+# rhel_post_check_java_keystore_passwordをAAPの認証情報で設定
  
 # ============================================================================
 # ServerProtect for Linux カーネルフックモジュール差し替えの設定

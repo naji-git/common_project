@@ -27,12 +27,12 @@
     __rhel_pre_check_ca_cacerts_path: >-
       {{ __rhel_pre_check_ca_java_path['stdout'] | trim | dirname | dirname }}/lib/security/cacerts
     __rhel_pre_check_ca_default_cacerts_path: >-
-      {{ rhel_pre_check_patch_evidence_dir }}/cacerts.default
+      {{ rhel_pre_check_patch_evidence_directory }}/cacerts.default
   block:
  
     - name: "Create evidence directory for patch operations"
       ansible.builtin.file:
-        path: "{{ rhel_pre_check_patch_evidence_dir }}"
+        path: "{{ rhel_pre_check_patch_evidence_directory }}"
         state: directory
         mode: "0755"
  
@@ -66,7 +66,7 @@
     - name: "Save current Java cacerts certificate list to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_ca_current_detail_out['stdout'] }}\n"
-        dest: "{{ rhel_pre_check_patch_evidence_dir }}/cacerts.current.detail"
+        dest: "{{ rhel_pre_check_patch_evidence_directory }}/cacerts.current.detail"
         mode: "0644"
  
     # keytool による証明書一覧取得には専用モジュールが無いため command を使用
@@ -86,7 +86,7 @@
     - name: "Save OS default cacerts certificate list to evidence file"
       ansible.builtin.copy:
         content: "{{ __rhel_pre_check_ca_default_detail_out['stdout'] }}\n"
-        dest: "{{ rhel_pre_check_patch_evidence_dir }}/cacerts.default.detail"
+        dest: "{{ rhel_pre_check_patch_evidence_directory }}/cacerts.default.detail"
         mode: "0644"
  
     - name: "Extract and compare SHA-256 fingerprints between current and default cacerts"
@@ -120,7 +120,7 @@
               [ERROR] 現行 cacerts の証明書一覧から、エイリアス名を取得できないエントリがあります
               （SHA-256 の行: {{ __rhel_pre_check_ca_current_sha256_lines | length }} 件、
               エイリアス名を取得できたエントリ: {{ __rhel_pre_check_ca_alias_fp_pairs | length }} 件）。
-              {{ rhel_pre_check_patch_evidence_dir }}/cacerts.current.detail の内容を確認し、
+              {{ rhel_pre_check_patch_evidence_directory }}/cacerts.current.detail の内容を確認し、
               エイリアス名の表記（コンマ・日付の形式など）が想定と異なる場合は手動で退避してください。
             quiet: true
  
@@ -147,7 +147,7 @@
                   - "{{ rhel_pre_check_java_keystore_password }}"
                   - -rfc
                   - -file
-                  - "{{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}_before.crt"
+                  - "{{ rhel_pre_check_patch_evidence_directory }}/{{ item[0] }}_before.crt"
               loop: "{{ __rhel_pre_check_ca_diff_entries }}"
               loop_control:
                 label: "{{ item[0] }}"
@@ -156,7 +156,7 @@
  
             - name: "Check if exported ca-certificates files exist and are not empty"
               ansible.builtin.stat:
-                path: "{{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}_before.crt"
+                path: "{{ rhel_pre_check_patch_evidence_directory }}/{{ item[0] }}_before.crt"
               loop: "{{ __rhel_pre_check_ca_diff_entries }}"
               loop_control:
                 label: "{{ item[0] }}"
@@ -168,8 +168,8 @@
                   - item['stat']['exists'] | bool
                   - item['stat']['size'] | int > 0
                 fail_msg: >-
-                  [ERROR] {{ rhel_pre_check_patch_evidence_dir }}/{{ item['item'][0] }}_before.crt が作成されていないか空です。
-                  keytool の実行ユーザーと {{ rhel_pre_check_patch_evidence_dir }} の書き込み権限を確認してください。
+                  [ERROR] {{ rhel_pre_check_patch_evidence_directory }}/{{ item['item'][0] }}_before.crt が作成されていないか空です。
+                  keytool の実行ユーザーと {{ rhel_pre_check_patch_evidence_directory }} の書き込み権限を確認してください。
                 quiet: true
               loop: "{{ __rhel_pre_check_ca_cert_stats['results'] }}"
               loop_control:
@@ -178,7 +178,7 @@
             - name: "Display message when ca-certificates is exported"
               ansible.builtin.debug:
                 msg: >-
-                  [OK] ca-certificates を {{ rhel_pre_check_patch_evidence_dir }}/{{ item[0] }}_before.crt に退避しました（エイリアス: {{ item[0] }}）。
+                  [OK] ca-certificates を {{ rhel_pre_check_patch_evidence_directory }}/{{ item[0] }}_before.crt に退避しました（エイリアス: {{ item[0] }}）。
               loop: "{{ __rhel_pre_check_ca_diff_entries }}"
               loop_control:
                 label: "{{ item[0] }}"
@@ -187,13 +187,13 @@
             - name: "Save target alias names to evidence file"
               ansible.builtin.copy:
                 content: "{{ (__rhel_pre_check_ca_diff_entries | map('first') | join('\n')) ~ '\n' }}"
-                dest: "{{ rhel_pre_check_patch_evidence_dir }}/ca-certificates_alias_before"
+                dest: "{{ rhel_pre_check_patch_evidence_directory }}/ca-certificates_alias_before"
                 mode: "0644"
  
             - name: "Save SHA256 fingerprints to evidence file"
               ansible.builtin.copy:
                 content: "{{ (__rhel_pre_check_ca_diff_entries | map('last') | join('\n')) ~ '\n' }}"
-                dest: "{{ rhel_pre_check_patch_evidence_dir }}/ca-certificates_FingerprintSHA256_before"
+                dest: "{{ rhel_pre_check_patch_evidence_directory }}/ca-certificates_FingerprintSHA256_before"
                 mode: "0644"
  
 - name: "Display skip message when java or keytool is not installed"
@@ -203,3 +203,4 @@
     __rhel_pre_check_ca_java_path['rc'] != 0
     or (__rhel_pre_check_ca_java_path['stdout'] | trim | length == 0)
     or __rhel_pre_check_ca_keytool_path['rc'] != 0
+

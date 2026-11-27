@@ -2,7 +2,7 @@
 # 1. 事前退避したエイリアス一覧ファイルの存在確認（存在しない場合は作業不要の判定）
 - name: "Check if pre-patch ca-certificates alias list file exists"
   ansible.builtin.stat:
-    path: "{{ rhel_post_check_patch_evidence_dir }}/ca-certificates_alias_before"
+    path: "{{ rhel_post_check_patch_evidence_directory }}/ca-certificates_alias_before"
   register: __rhel_post_check_ca_alias_before_stat
  
 - name: "Display skip message when pre-patch ca-certificates alias file does not exist"
@@ -21,7 +21,7 @@
  
     - name: "Read pre-patch ca-certificates alias names"
       ansible.builtin.slurp:
-        src: "{{ rhel_post_check_patch_evidence_dir }}/ca-certificates_alias_before"
+        src: "{{ rhel_post_check_patch_evidence_directory }}/ca-certificates_alias_before"
       register: __rhel_post_check_ca_alias_slurp
  
     - name: "Display skip message when pre-patch ca-certificates alias list is empty"
@@ -70,13 +70,13 @@
               - __rhel_post_check_ca_java_path['rc'] == 0
               - __rhel_post_check_ca_java_path['stdout'] | trim | length > 0
             fail_msg: >-
-              [ERROR] java が見つかりません。{{ rhel_post_check_patch_evidence_dir }} 配下の退避証明書は存在するため、
+              [ERROR] java が見つかりません。{{ rhel_post_check_patch_evidence_directory }} 配下の退避証明書は存在するため、
               Java の導入状態を確認し、ca-certificates（{{ __rhel_post_check_ca_target_aliases | join(', ') }}）を手動で再インポートしてください。
             quiet: true
  
         - name: "Check if pre-patch ca-certificates export files exist"
           ansible.builtin.stat:
-            path: "{{ rhel_post_check_patch_evidence_dir }}/{{ item }}_before.crt"
+            path: "{{ rhel_post_check_patch_evidence_directory }}/{{ item }}_before.crt"
           loop: "{{ __rhel_post_check_ca_target_aliases }}"
           loop_control:
             label: "{{ item }}"
@@ -87,7 +87,7 @@
             that:
               - item['stat']['exists'] | bool
             fail_msg: >-
-              [ERROR] 退避証明書ファイル {{ rhel_post_check_patch_evidence_dir }}/{{ item['item'] }}_before.crt が存在しません。
+              [ERROR] 退避証明書ファイル {{ rhel_post_check_patch_evidence_directory }}/{{ item['item'] }}_before.crt が存在しません。
               rhel_pre_check の実行結果を確認してください。
             quiet: true
           loop: "{{ __rhel_post_check_ca_cert_stats['results'] }}"
@@ -96,12 +96,12 @@
  
         - name: "Check if pre-patch cacerts detail evidence file exists"
           ansible.builtin.stat:
-            path: "{{ rhel_post_check_patch_evidence_dir }}/cacerts.current.detail"
+            path: "{{ rhel_post_check_patch_evidence_directory }}/cacerts.current.detail"
           register: __rhel_post_check_ca_before_detail_stat
  
         - name: "Read pre-patch cacerts detail file if available"
           ansible.builtin.slurp:
-            src: "{{ rhel_post_check_patch_evidence_dir }}/cacerts.current.detail"
+            src: "{{ rhel_post_check_patch_evidence_directory }}/cacerts.current.detail"
           register: __rhel_post_check_ca_before_detail_slurp
           when: __rhel_post_check_ca_before_detail_stat['stat']['exists'] | bool
  
@@ -130,9 +130,9 @@
                 (__rhel_post_check_ca_before_detail_text.splitlines() | select('search', 'SHA-256') | list | length)
             fail_msg: >-
               [ERROR] cacerts の証明書一覧から、エイリアス名を取得できないエントリがあります。
-              keytool -list の出力と {{ rhel_post_check_patch_evidence_dir }}/cacerts.current.detail の内容を確認し、
+              keytool -list の出力と {{ rhel_post_check_patch_evidence_directory }}/cacerts.current.detail の内容を確認し、
               エイリアス名の表記（コンマ・日付の形式など）が想定と異なる場合は、
-              {{ rhel_post_check_patch_evidence_dir }}/<エイリアス名>_before.crt を手動でインポートしてください。
+              {{ rhel_post_check_patch_evidence_directory }}/<エイリアス名>_before.crt を手動でインポートしてください。
             quiet: true
  
         - name: "Display message when target ca-certificates alias is missing in keystore"
@@ -212,7 +212,7 @@
                   - -trustcacerts
                   - -noprompt
                   - -file
-                  - "{{ rhel_post_check_patch_evidence_dir }}/{{ item }}_before.crt"
+                  - "{{ rhel_post_check_patch_evidence_directory }}/{{ item }}_before.crt"
                   - -alias
                   - "{{ item }}"
                   - -keystore
@@ -249,7 +249,7 @@
                     | list | length > 0
                 fail_msg: >-
                   [ERROR] リストア後の cacerts にエイリアス {{ item }} が見つかりません。
-                  keytool -list で cacerts の内容を確認し、{{ rhel_post_check_patch_evidence_dir }}/{{ item }}_before.crt を手動でインポートしてください。
+                  keytool -list で cacerts の内容を確認し、{{ rhel_post_check_patch_evidence_directory }}/{{ item }}_before.crt を手動でインポートしてください。
                 success_msg: "[OK] ca-certificates（{{ item }}）が cacerts に存在することを確認しました。"
               loop: "{{ __rhel_post_check_ca_reimport_aliases }}"
               loop_control:
@@ -270,8 +270,8 @@
                     == (__rhel_post_check_ca_before_alias_fp_map[item | lower] | default(''))
                 fail_msg: >-
                   [ERROR] エイリアス {{ item }} の SHA256 フィンガープリントがパッチ適用前と一致していないため、サーバのca-certificatesの状態確認をお願いします。
-                  keytool -list で cacerts の内容を確認し、{{ rhel_post_check_patch_evidence_dir }}/cacerts.current.detail の事前の値と比較してください。
-                  必要に応じて {{ rhel_post_check_patch_evidence_dir }}/{{ item }}_before.crt を手動で再インポートしてください。
+                  keytool -list で cacerts の内容を確認し、{{ rhel_post_check_patch_evidence_directory }}/cacerts.current.detail の事前の値と比較してください。
+                  必要に応じて {{ rhel_post_check_patch_evidence_directory }}/{{ item }}_before.crt を手動で再インポートしてください。
                 success_msg: "[OK] エイリアス {{ item }} の SHA256 フィンガープリントがパッチ適用前と一致しています。"
               loop: "{{ __rhel_post_check_ca_reimport_aliases }}"
               loop_control:

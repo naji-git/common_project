@@ -3,13 +3,30 @@
 # 作業ディレクトリ・作業日の設定
 # ============================================================================
 # パッチ作業のベースディレクトリ
-rhel_pre_reboot_recovery_base_dir: "/home/ansible"
+# システムごとに変更する場合は個別プロジェクトの group_vars/all.yml で共通変数 rhel_patch_rpm_directory を指定する
+rhel_pre_reboot_recovery_base_directory: "{{ rhel_patch_base_directory | default('/home/ansible') }}"
  
 # パッチ作業証跡ディレクトリ (/home/ansible/rhel_patch)
-rhel_pre_reboot_recovery_patch_evidence_dir: "{{ rhel_pre_reboot_recovery_base_dir }}/rhel_patch"
-
-# ============================================================================
-# httpdの利用有無の設定
-# ============================================================================
+rhel_pre_reboot_recovery_patch_evidence_directory: "{{ rhel_pre_reboot_recovery_base_directory }}/rhel_patch"
  
-rhel_pre_reboot_recovery_httpd_in_use: "{{ httpd_in_use }}"
+# ============================================================================
+# 作業日時（日本時間）の設定
+# ============================================================================
+# 対象サーバーのタイムゾーン（UTC または JST）に関係なく、日本時間（JST = UTC+9）の現在日時を求める。
+# ansible_facts['date_time']['iso8601'] は常に UTC のため、9時間を加えると、UTC・JST どちらのサーバーでも日本時間の日時になる。
+# ロール内部の判定用のため、通常は上書きしない
+__rhel_pre_reboot_recovery_jst_now: >-
+  {{ ((ansible_facts['date_time']['iso8601'] | to_datetime('%Y-%m-%dT%H:%M:%SZ'))
+    + ('1970-01-01 09:00:00' | to_datetime - '1970-01-01 00:00:00' | to_datetime)).strftime('%Y-%m-%d %H:%M:%S') }}
+ 
+# 日本時間の日付（YYYYMMDD）。SAM 監視ログのファイル名に使用
+__rhel_pre_reboot_recovery_jst_date: "{{ __rhel_pre_reboot_recovery_jst_now[:10] | replace('-', '') }}"
+ 
+# ============================================================================
+# httpd 設定復旧の設定
+# ============================================================================
+# httpd を利用するか（共通変数 httpd_in_use を引き継ぐ。未定義の場合は false）
+# true の場合のみ httpd 設定の復旧（restore_httpd_conf.yml）を実行し、false の場合はスキップする
+# システムごとに変更する場合は個別プロジェクトの group_vars で httpd_in_use を指定する
+rhel_pre_reboot_recovery_httpd_in_use: "{{ httpd_in_use | default(false) }}"
+

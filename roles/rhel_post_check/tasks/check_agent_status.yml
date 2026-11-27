@@ -4,8 +4,7 @@
 # ==================================================
 - name: "Set today date formatted variable"
   ansible.builtin.set_fact:
-    __rhel_post_check_today_compact: "{{ ansible_facts['date_time']['date'] | replace('-', '') }}"
-    __rhel_post_check_today_hyphen: "{{ ansible_facts['date_time']['date'] }}"
+    __rhel_post_check_today_compact: "{{ __rhel_post_check_jst_date }}"
  
 - name: "Check if today SAM filtered log file exists"
   ansible.builtin.stat:
@@ -42,12 +41,12 @@
 # ==================================================
 - name: "Check if JP1 service state file exists"
   ansible.builtin.stat:
-    path: "{{ rhel_post_check_patch_evidence_dir }}/jp1_running_services_pre_check.json"
+    path: "{{ rhel_post_check_patch_evidence_directory }}/jp1_running_services_pre_check.json"
   register: __rhel_post_check_jp1_state_file
  
 - name: "Read JP1 service state file"
   ansible.builtin.slurp:
-    src: "{{ rhel_post_check_patch_evidence_dir }}/jp1_running_services_pre_check.json"
+    src: "{{ rhel_post_check_patch_evidence_directory }}/jp1_running_services_pre_check.json"
   when: __rhel_post_check_jp1_state_file['stat']['exists'] | bool
   register: __rhel_post_check_jp1_state_content
  
@@ -174,7 +173,8 @@
       become: true
       loop: "{{ __rhel_post_check_disable_files['files'] | default([]) }}"
       when:
-        - ('%Y-%m-%d' | strftime(item['mtime'])) == __rhel_post_check_today_hyphen
+        - (item['mtime'] | int) >= (__rhel_post_check_jst_today_start_epoch | int)
+        - (item['mtime'] | int) < (__rhel_post_check_jst_today_start_epoch | int) + 86400
       register: __rhel_post_check_removed_disable_files
  
   rescue:
